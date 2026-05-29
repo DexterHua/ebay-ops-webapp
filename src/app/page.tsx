@@ -9,7 +9,7 @@ export default function Home() {
       {/* 欢迎区 */}
       <div>
         <h1 className="text-2xl font-bold text-gray-900">👋 欢迎回来，车泉</h1>
-        <p className="text-gray-500 mt-1">eBay 四店铺运营管理 · A/B/C店运营中 · D店待启用</p>
+        <p className="text-gray-500 mt-1">eBay 四店铺运营管理 · NewPower / VelocityGear / TitanRig 运营中 · Nexusmoto 待启用</p>
       </div>
 
       {/* 快速概览卡片 */}

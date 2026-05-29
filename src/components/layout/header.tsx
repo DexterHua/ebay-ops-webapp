@@ -26,7 +26,7 @@ export function Header() {
       <div className="flex items-center gap-4">
         {/* 快筛 */}
         <div className="flex items-center gap-2">
-          {["A店-主力店", "B店-测款店", "C店-利润店"].map((store) => (
+          {["NewPower", "VelocityGear", "TitanRig"].map((store) => (
             <Badge
               key={store}
               variant="outline"

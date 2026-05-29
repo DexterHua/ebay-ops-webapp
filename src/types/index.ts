@@ -3,7 +3,7 @@
 // ============================================================
 
 // --- 店铺 ---
-export type StoreId = "A" | "B" | "C" | "D";
+export type StoreId = "NP" | "VG" | "TR" | "NM";
 
 export interface Store {
   id: StoreId;
@@ -130,10 +130,10 @@ export interface AIResponse<T> {
 
 // --- 全局常量 ---
 export const STORES: Store[] = [
-  { id: "A", name: "A店-主力店", label: "A店", description: "主力店铺", active: true },
-  { id: "B", name: "B店-测款店", label: "B店", description: "测款店铺", active: true },
-  { id: "C", name: "C店-利润店", label: "C店", description: "利润店铺", active: true },
-  { id: "D", name: "D店-清货店", label: "D店", description: "清货店铺", active: false },
+  { id: "NP", name: "NewPower", label: "NP", description: "主力店铺", active: true },
+  { id: "VG", name: "VelocityGear", label: "VG", description: "测款店铺", active: true },
+  { id: "TR", name: "TitanRig", label: "TR", description: "利润店铺", active: true },
+  { id: "NM", name: "Nexusmoto", label: "NM", description: "清货店铺", active: false },
 ];
 
 export const MODULES = [

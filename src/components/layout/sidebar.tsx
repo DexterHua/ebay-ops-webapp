@@ -50,7 +50,7 @@ export function Sidebar() {
           飞书已连接
         </div>
         <p className="text-[10px] text-gray-600 mt-0.5">
-          A/B/C店 · 运营中
+          NewPower / VelocityGear / TitanRig · 运营中
         </p>
       </div>
     </aside>
