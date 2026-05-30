@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -48,7 +49,7 @@ export default function LoginPage() {
         {/* Logo */}
         <div className="text-center mb-8">
           <div className="w-14 h-14 mx-auto rounded-xl bg-white/10 flex items-center justify-center mb-4">
-            <img src="/logo.png" alt="Logo" className="h-8 w-8 object-contain" />
+            <Image src="/logo.png" alt="Logo" width={32} height={32} className="h-8 w-8 object-contain" />
           </div>
           <h1 className="text-lg font-bold text-white">烁立德运营中心</h1>
           <p className="text-xs text-gray-400 mt-1">Solid eCom Operations</p>

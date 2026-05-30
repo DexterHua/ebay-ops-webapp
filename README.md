@@ -1,36 +1,58 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 烁立德 eBay 运营中心
 
-## Getting Started
+内部使用的 eBay 运营 WebApp。系统读取飞书多维表格作为业务数据源，并通过 DeepSeek 提供库存补货、详情页、售后回复和选品分析能力。
 
-First, run the development server:
+## 功能
+
+- 运营仪表盘与分店铺看板
+- 库存监控与 AI 补货建议
+- eBay 详情页生成与批量保存
+- 售后待办读取、AI 回复草稿与回写
+- 选品分析与结果沉淀
+- 飞书多维表格在线录入
+- JWT 登录与账号管理
+
+## 本地启动
+
+1. 安装依赖：
+
+```bash
+npm install
+```
+
+2. 复制 `.env.example` 为 `.env.local`，填写本地环境配置。
+
+3. 启动开发环境：
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+4. 打开 [http://localhost:3000](http://localhost:3000)。
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## 数据安全
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- 飞书写入默认关闭。只有明确需要保存业务数据时，才设置 `LARK_WRITE_ENABLED=true`。
+- 飞书 Token、表 ID、CLI 路径和 JWT 密钥均通过环境变量注入，不应提交到仓库。
+- `data/users.json` 是本地账号持久化文件。后续部署前应迁移到正式账号存储，并使用专用密码哈希算法。
+- 如果历史提交中曾出现飞书 Token，应在飞书侧轮换 Token。
 
-## Learn More
+## 环境变量
 
-To learn more about Next.js, take a look at the following resources:
+完整配置见 `.env.example`。关键变量：
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+| 变量 | 用途 |
+| --- | --- |
+| `JWT_SECRET` | JWT 签名密钥，至少 32 位 |
+| `DEEPSEEK_API_KEY` | DeepSeek API Key |
+| `LARK_BASE_TOKEN` | 飞书多维表格 Token |
+| `LARK_CLI_PATH` | `lark-cli` 可执行文件路径，默认从 `PATH` 查找 |
+| `LARK_WRITE_ENABLED` | 是否允许写入飞书，默认 `false` |
+| `LARK_MAX_READ_RECORDS` | 单次接口最多读取的记录数，默认 `5000` |
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## 验证
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```bash
+npm run lint
+npm run build
+```

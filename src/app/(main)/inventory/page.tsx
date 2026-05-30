@@ -24,7 +24,7 @@ interface LarkSkuRecord {
   类目?: string | string[];
   采购价?: number;
   建议售价?: number;
-  头程成本件?: number;
+  "头程成本|件"?: number;
   橙联可售?: number;
   橙联在途?: number;
   本地库存?: number;
@@ -46,10 +46,10 @@ interface LarkSkuRecord {
   风险标签?: string | string[];
   广告费率?: number;
   eBay费率?: number;
-  橙联履约预估件?: number;
+  "橙联履约预估|件"?: number;
   OEM?: string;
-  商品毛重g?: number;
-  商品尺寸含包装cm?: string;
+  "商品毛重（g）"?: number;
+  "商品尺寸（含包装）（cm）"?: string;
   [key: string]: unknown;
 }
 
@@ -106,8 +106,6 @@ export default function InventoryPage() {
 
   // 页面加载时从飞书读取 SKU 数据
   const fetchSkus = useCallback(async () => {
-    setSkusLoading(true);
-    setSkusError("");
     try {
       const res = await fetch("/api/lark?table=sku&limit=200");
       const json = await res.json();
@@ -152,8 +150,15 @@ export default function InventoryPage() {
     }
   }, []);
 
+  const refreshSkus = () => {
+    setSkusLoading(true);
+    setSkusError("");
+    void fetchSkus();
+  };
+
   useEffect(() => {
-    fetchSkus();
+    const timer = setTimeout(() => { void fetchSkus(); }, 0);
+    return () => clearTimeout(timer);
   }, [fetchSkus]);
 
   // 运行 AI 补货分析
@@ -269,7 +274,7 @@ export default function InventoryPage() {
           </p>
         </div>
         <div className="flex items-center gap-3">
-          <Button variant="outline" onClick={fetchSkus} disabled={skusLoading}>
+          <Button variant="outline" onClick={refreshSkus} disabled={skusLoading}>
             {skusLoading ? "⏳ 加载中..." : "🔄 刷新数据"}
           </Button>
           <Button onClick={runAnalysis} disabled={analyzing || skus.length === 0} size="lg">
@@ -293,7 +298,7 @@ export default function InventoryPage() {
           <CardContent className="p-4 text-red-700">
             <p className="font-medium">飞书数据读取失败</p>
             <p className="text-sm mt-1">{skusError}</p>
-            <Button variant="outline" size="sm" className="mt-3" onClick={fetchSkus}>
+            <Button variant="outline" size="sm" className="mt-3" onClick={refreshSkus}>
               重试
             </Button>
           </CardContent>
@@ -487,7 +492,7 @@ export default function InventoryPage() {
             <p className="text-gray-400 text-sm mb-4">
               请先在飞书多维表格的「01_SKU主数据」中录入商品信息
             </p>
-            <Button onClick={fetchSkus}>🔄 重新加载</Button>
+            <Button onClick={refreshSkus}>🔄 重新加载</Button>
           </CardContent>
         </Card>
       )}

@@ -6,28 +6,20 @@ import { NextRequest, NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-import { exec } from "child_process";
 import { writeFileSync, unlinkSync } from "fs";
+import { tmpdir } from "os";
 import { join } from "path";
-import { promisify } from "util";
-
-const execAsync = promisify(exec);
-
-const BASE_TOKEN = "RveVbcouwa06KcsDXcIc45AInkg";
-const TABLE_ID = "tblswYKzSskqXZ1V";
-const LARK_CLI = "/Users/chequan/.nvm/versions/node/v24.15.0/bin/lark-cli";
-const EXTRA_PATH = "/Users/chequan/.nvm/versions/node/v24.15.0/bin";
-
-const CWD = /* turbopackIgnore: true */ process.cwd();
+import { assertLarkWriteEnabled, getLarkBaseToken, getLarkTableId, runLarkCli } from "@/lib/lark-server";
 
 function cleanupTmp(filename: string) {
   if (!filename) return;
-  try { unlinkSync(join(CWD, filename)); } catch { /* ignore */ }
+  try { unlinkSync(filename); } catch { /* ignore */ }
 }
 
 export async function POST(request: NextRequest) {
   let tmpFile = "";
   try {
+    assertLarkWriteEnabled();
     const body = await request.json();
     const { sku, titleV1, titleV2, titleV3, descriptionHTML, itemSpecs } = body;
 
@@ -42,13 +34,16 @@ export async function POST(request: NextRequest) {
       ]],
     };
 
-    tmpFile = `_savelisting_${Date.now()}.json`;
-    writeFileSync(join(CWD, tmpFile), JSON.stringify(payload));
+    tmpFile = join(tmpdir(), `_savelisting_${Date.now()}.json`);
+    writeFileSync(tmpFile, JSON.stringify(payload));
 
-    const { stdout } = await execAsync(
-      `${LARK_CLI} base +record-batch-create --base-token ${BASE_TOKEN} --table-id ${TABLE_ID} --json @${tmpFile} --as user`,
-      { maxBuffer: 10 * 1024 * 1024, cwd: CWD, env: { ...process.env, PATH: `${process.env.PATH}:${EXTRA_PATH}` } },
-    );
+    const { stdout } = await runLarkCli([
+      "base", "+record-batch-create",
+      "--base-token", getLarkBaseToken(),
+      "--table-id", getLarkTableId("listing"),
+      "--json", `@${tmpFile}`,
+      "--as", "user",
+    ]);
 
     cleanupTmp(tmpFile);
     const result = JSON.parse(stdout);

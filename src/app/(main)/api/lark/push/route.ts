@@ -3,18 +3,14 @@
 // ============================================================
 
 import { NextRequest, NextResponse } from "next/server";
-import { exec } from "child_process";
-import { promisify } from "util";
-
-const execAsync = promisify(exec);
-const LARK_CLI = "/Users/chequan/.nvm/versions/node/v24.15.0/bin/lark-cli";
-const EXTRA_PATH = "/Users/chequan/.nvm/versions/node/v24.15.0/bin";
+import { assertLarkWriteEnabled, runLarkCli } from "@/lib/lark-server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: NextRequest) {
   try {
+    assertLarkWriteEnabled();
     const body = await request.json();
     const { chatId, content, title } = body;
 
@@ -24,17 +20,19 @@ export async function POST(request: NextRequest) {
     if (!content) {
       return NextResponse.json({ success: false, error: "缺少 content" }, { status: 400 });
     }
+    if (!/^[A-Za-z0-9_-]+$/.test(chatId)) {
+      return NextResponse.json({ success: false, error: "chatId 格式不正确" }, { status: 400 });
+    }
 
     // 构建消息文本：title + content
     const fullText = title ? `**${title}**\n${content}` : content;
 
-    const { stdout } = await execAsync(
-      `${LARK_CLI} im +messages-send --chat-id ${chatId} --markdown '${fullText.replace(/'/g, "'\\''")}' --as user`,
-      {
-        maxBuffer: 5 * 1024 * 1024,
-        env: { ...process.env, PATH: `${process.env.PATH}:${EXTRA_PATH}` },
-      },
-    );
+    const { stdout } = await runLarkCli([
+      "im", "+messages-send",
+      "--chat-id", chatId,
+      "--markdown", fullText,
+      "--as", "user",
+    ], { maxBuffer: 5 * 1024 * 1024 });
 
     const result = JSON.parse(stdout);
     return NextResponse.json({ success: result.ok ?? true, messageId: result.data?.message_id });

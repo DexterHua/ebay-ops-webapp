@@ -3,17 +3,10 @@
 // ============================================================
 
 import { NextRequest, NextResponse } from "next/server";
-import { exec } from "child_process";
 import { writeFileSync, unlinkSync } from "fs";
+import { tmpdir } from "os";
 import { join } from "path";
-import { promisify } from "util";
-
-const execAsync = promisify(exec);
-const BASE_TOKEN = "RveVbcouwa06KcsDXcIc45AInkg";
-const TABLE_ID = "tbl3cCCTik5VVO7I";
-const LARK_CLI = "/Users/chequan/.nvm/versions/node/v24.15.0/bin/lark-cli";
-const EXTRA_PATH = "/Users/chequan/.nvm/versions/node/v24.15.0/bin";
-const CWD = /* turbopackIgnore: true */ process.cwd();
+import { assertLarkWriteEnabled, getLarkBaseToken, getLarkTableId, runLarkCli } from "@/lib/lark-server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -22,28 +15,35 @@ export async function POST(request: NextRequest) {
   let tmpFile = "";
   let pushFile = "";
   try {
+    assertLarkWriteEnabled();
     const body = await request.json();
     const { recordId, replyText, issueType, priority, sku, orderNo } = body;
 
     if (!recordId || !replyText) {
       return NextResponse.json({ success: false, error: "缺少必填字段" }, { status: 400 });
     }
+    if (!/^[A-Za-z0-9_-]+$/.test(recordId)) {
+      return NextResponse.json({ success: false, error: "recordId 格式不正确" }, { status: 400 });
+    }
 
     // 1. 更新飞书记录
-    tmpFile = `_reply_${Date.now()}.json`;
-    writeFileSync(join(CWD, tmpFile), JSON.stringify({
+    tmpFile = join(tmpdir(), `_reply_${Date.now()}.json`);
+    writeFileSync(tmpFile, JSON.stringify({
       "处理动作": "已回复",
       "状态": "已完成",
       "描述": `[AI回复] ${replyText}`,
     }));
 
-    const updateCmd = `${LARK_CLI} base +record-upsert --base-token ${BASE_TOKEN} --table-id ${TABLE_ID} --record-id ${recordId} --json @${tmpFile} --as user`;
-    const { stdout } = await execAsync(updateCmd, {
-      maxBuffer: 5 * 1024 * 1024, cwd: CWD,
-      env: { ...process.env, PATH: `${process.env.PATH}:${EXTRA_PATH}` },
-    });
+    const { stdout } = await runLarkCli([
+      "base", "+record-upsert",
+      "--base-token", getLarkBaseToken(),
+      "--table-id", getLarkTableId("issues"),
+      "--record-id", recordId,
+      "--json", `@${tmpFile}`,
+      "--as", "user",
+    ], { maxBuffer: 5 * 1024 * 1024 });
 
-    unlinkSync(join(CWD, tmpFile));
+    unlinkSync(tmpFile);
     const result = JSON.parse(stdout);
 
     // 2. 高风险事件推送飞书消息
@@ -53,8 +53,8 @@ export async function POST(request: NextRequest) {
 
     if (isHighRisk) {
       try {
-        pushFile = `_push_${Date.now()}.json`;
-        writeFileSync(join(CWD, pushFile), JSON.stringify({
+        pushFile = join(tmpdir(), `_push_${Date.now()}.json`);
+        writeFileSync(pushFile, JSON.stringify({
           receive_id_type: "open_id",
           msg_type: "interactive",
           content: JSON.stringify({
@@ -66,13 +66,12 @@ export async function POST(request: NextRequest) {
           }),
         }));
 
-        await execAsync(
-          `${LARK_CLI} api POST /open-apis/im/v1/messages?receive_id_type=open_id --json @${pushFile} --as user`,
-          { maxBuffer: 5 * 1024 * 1024, cwd: CWD,
-            env: { ...process.env, PATH: `${process.env.PATH}:${EXTRA_PATH}` },
-          },
-        );
-        unlinkSync(join(CWD, pushFile));
+        await runLarkCli([
+          "api", "POST", "/open-apis/im/v1/messages?receive_id_type=open_id",
+          "--json", `@${pushFile}`,
+          "--as", "user",
+        ], { maxBuffer: 5 * 1024 * 1024 });
+        unlinkSync(pushFile);
         pushSent = true;
       } catch {
         console.log("[push] 推送跳过（可能需要指定接收人）");
@@ -81,8 +80,8 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ success: result.ok, updated: result.ok, pushSent });
   } catch (error) {
-    if (tmpFile) { try { unlinkSync(join(CWD, tmpFile)); } catch { /* ok */ } }
-    if (pushFile) { try { unlinkSync(join(CWD, pushFile)); } catch { /* ok */ } }
+    if (tmpFile) { try { unlinkSync(tmpFile); } catch { /* ok */ } }
+    if (pushFile) { try { unlinkSync(pushFile); } catch { /* ok */ } }
     return NextResponse.json({ success: false, error: (error as Error).message }, { status: 500 });
   }
 }

@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { jwtVerify } from "jose";
-
-const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET || "solid-ecom-ops-secret-key-2025");
+import { getJwtSecret } from "@/lib/auth-config";
 
 export async function GET() {
   try {
@@ -10,7 +9,7 @@ export async function GET() {
     const token = cookieStore.get("auth_token")?.value;
     if (!token) return NextResponse.json({ name: null, isAdmin: false }, { status: 401 });
 
-    const { payload } = await jwtVerify(token, JWT_SECRET);
+    const { payload } = await jwtVerify(token, getJwtSecret());
     return NextResponse.json({ name: payload.name as string, isAdmin: !!payload.isAdmin });
   } catch {
     return NextResponse.json({ name: null, isAdmin: false }, { status: 401 });

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { MODULES } from "@/types";
@@ -9,12 +10,18 @@ import { MODULES } from "@/types";
 export function Sidebar() {
   const pathname = usePathname();
   const [isAdmin, setIsAdmin] = useState(false);
+  const [larkStatus, setLarkStatus] = useState<"checking" | "readonly" | "connected" | "offline">("checking");
 
   useEffect(() => {
     fetch("/api/auth/me")
       .then((r) => r.json())
       .then((d) => { if (d.isAdmin) setIsAdmin(true); })
       .catch(() => {});
+
+    fetch("/api/lark/status")
+      .then((r) => r.json())
+      .then((d) => setLarkStatus(d.connected ? (d.readOnly ? "readonly" : "connected") : "offline"))
+      .catch(() => setLarkStatus("offline"));
   }, []);
 
   const modules = MODULES.filter((m) => !(m as { adminOnly?: boolean }).adminOnly || isAdmin);
@@ -24,9 +31,11 @@ export function Sidebar() {
       {/* Logo 区域 */}
       <div className="px-5 py-4 border-b border-gray-100">
         <Link href="/" className="flex items-center gap-3">
-          <img
+          <Image
             src="/logo.png"
             alt="烁立德"
+            width={32}
+            height={32}
             className="h-8 w-8 rounded-md shrink-0 object-contain"
           />
           <div>
@@ -63,8 +72,19 @@ export function Sidebar() {
       {/* 底部状态 */}
       <div className="px-4 py-3 border-t border-gray-100">
         <div className="flex items-center gap-2 text-[11px] text-gray-400">
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block animate-pulse" />
-          <span>飞书已连接</span>
+          <span className={cn(
+            "w-1.5 h-1.5 rounded-full inline-block",
+            larkStatus === "checking" && "bg-gray-300 animate-pulse",
+            larkStatus === "readonly" && "bg-amber-500",
+            larkStatus === "connected" && "bg-emerald-500",
+            larkStatus === "offline" && "bg-red-500",
+          )} />
+          <span>
+            {larkStatus === "checking" && "飞书连接检测中"}
+            {larkStatus === "readonly" && "飞书已连接（只读）"}
+            {larkStatus === "connected" && "飞书已连接"}
+            {larkStatus === "offline" && "飞书未连接"}
+          </span>
         </div>
         <p className="text-[10px] text-gray-300 mt-0.5">
           NewPower · VelocityGear · TitanRig

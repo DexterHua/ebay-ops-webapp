@@ -2,8 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { jwtVerify } from "jose";
 import { listUsers, addUser, removeUser, resetPassword } from "@/lib/users";
-
-const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET || "solid-ecom-ops-secret-key-2025");
+import { getJwtSecret } from "@/lib/auth-config";
 
 /** 验证管理员权限 */
 async function checkAdmin(): Promise<boolean> {
@@ -11,7 +10,7 @@ async function checkAdmin(): Promise<boolean> {
     const cookieStore = await cookies();
     const token = cookieStore.get("auth_token")?.value;
     if (!token) return false;
-    const { payload } = await jwtVerify(token, JWT_SECRET);
+    const { payload } = await jwtVerify(token, getJwtSecret());
     return !!payload.isAdmin;
   } catch {
     return false;

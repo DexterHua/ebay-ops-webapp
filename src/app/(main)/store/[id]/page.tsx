@@ -15,7 +15,8 @@ import {
 const COLORS = ["#3b82f6", "#f59e0b", "#10b981", "#ef4444", "#8b5cf6", "#06b6d4", "#6366f1"];
 const STORE_COLORS: Record<string, string> = { NP: "#3b82f6", VG: "#f59e0b", TR: "#10b981" };
 
-interface SkuData { SKU?: string; 中文品名?: string; 类目?: string[]; SKU状态?: string[]; 橙联可售?: number; 采购价?: number; 建议售价?: number; 预估毛利率?: number; 预估毛利?: number; 单件总成本?: number; 商品毛重g?: number; [key: string]: unknown; }
+interface SkuData { SKU?: string; 中文品名?: string; 类目?: string[]; SKU状态?: string[]; 橙联可售?: number; 采购价?: number; 建议售价?: number; 预估毛利率?: number; 预估毛利?: number; 单件总成本?: number; "商品毛重（g）"?: number; [key: string]: unknown; }
+interface SalesData { 店铺?: string; 售出数量?: number; 销售额?: number; 日期?: string; [key: string]: unknown; }
 
 export default function StorePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
@@ -23,28 +24,52 @@ export default function StorePage({ params }: { params: Promise<{ id: string }> 
   const color = STORE_COLORS[id] || "#6b7280";
 
   const [skus, setSkus] = useState<SkuData[]>([]);
+  const [sales, setSales] = useState<SalesData[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     Promise.all([
       fetch("/api/lark?table=sku&limit=200").then(r => r.json()),
       fetch("/api/lark?table=sales&limit=500").then(r => r.json()),
-      fetch("/api/lark?table=issues&limit=200").then(r => r.json()),
-    ]).then(([s, sales, issues]) => {
+    ]).then(([s, salesResult]) => {
       if (s.success) {
         const idx = ["NP", "VG", "TR"].indexOf(id);
         const valid = (s.data as SkuData[]).filter((r) => r.SKU && r.中文品名);
         const filtered = valid.filter((_, i) => i % 3 === idx);
         setSkus(filtered);
       } else toast.error("数据加载失败");
+      if (salesResult.success && store) {
+        setSales((salesResult.data as SalesData[]).filter((row) => row.店铺 === store.name));
+      }
     }).catch(() => toast.error("网络错误"))
       .finally(() => setLoading(false));
-  }, [id]);
+  }, [id, store]);
 
-  // ---- 销售数据（开卖后从API真实拉取） ----
+  // ---- 销售数据（从 07_销售日报汇总） ----
   const salesData = useMemo(() => {
-    return { hasData: false, 日均订单: "--", 周GMV: "--", 月售件数: "--", 客单价: "--" };
-  }, []);
+    if (sales.length === 0) {
+      return { hasData: false, 日均订单: "--", 周GMV: "--", 月售件数: "--", 客单价: "--" };
+    }
+
+    const now = new Date();
+    const withinDays = (date: string | undefined, days: number) => {
+      if (!date) return false;
+      const parsed = new Date(date.replace(/\//g, "-"));
+      const elapsed = now.getTime() - parsed.getTime();
+      return Number.isFinite(elapsed) && elapsed >= 0 && elapsed <= days * 24 * 60 * 60 * 1000;
+    };
+    const recentWeek = sales.filter((row) => withinDays(row.日期, 7));
+    const recentMonth = sales.filter((row) => withinDays(row.日期, 30));
+    const totalRevenue = sales.reduce((sum, row) => sum + (Number(row.销售额) || 0), 0);
+
+    return {
+      hasData: true,
+      日均订单: (recentMonth.length / 30).toFixed(1),
+      周GMV: `$${recentWeek.reduce((sum, row) => sum + (Number(row.销售额) || 0), 0).toFixed(0)}`,
+      月售件数: recentMonth.reduce((sum, row) => sum + (Number(row.售出数量) || 0), 0),
+      客单价: `$${(totalRevenue / sales.length).toFixed(1)}`,
+    };
+  }, [sales]);
 
   // ---- 商品定价分析 ----
   const priced = useMemo(() => skus.filter(s => (s.建议售价 || 0) > 0), [skus]);

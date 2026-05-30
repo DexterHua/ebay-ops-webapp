@@ -2,8 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { SignJWT } from "jose";
 import { cookies } from "next/headers";
 import { verifyUser, isAdmin } from "@/lib/users";
-
-const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET || "solid-ecom-ops-secret-key-2025");
+import { getJwtSecret } from "@/lib/auth-config";
 
 export async function POST(request: NextRequest) {
   try {
@@ -25,7 +24,7 @@ export async function POST(request: NextRequest) {
       .setProtectedHeader({ alg: "HS256" })
       .setIssuedAt()
       .setExpirationTime("7d")
-      .sign(JWT_SECRET);
+      .sign(getJwtSecret());
 
     const cookieStore = await cookies();
     cookieStore.set("auth_token", token, {

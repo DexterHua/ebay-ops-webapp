@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { jwtVerify } from "jose";
-
-const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET || "solid-ecom-ops-secret-key-2025");
+import { getJwtSecret } from "@/lib/auth-config";
 
 // 无需登录即可访问的路径
 const PUBLIC_PATHS = [
@@ -32,7 +31,7 @@ export async function proxy(request: NextRequest) {
   }
 
   try {
-    await jwtVerify(token, JWT_SECRET);
+    await jwtVerify(token, getJwtSecret());
     return NextResponse.next();
   } catch {
     // Token 过期或无效

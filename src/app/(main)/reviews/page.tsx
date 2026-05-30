@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -86,7 +85,6 @@ export default function ReviewsPage() {
 
   // 加载飞书待处理售后
   const loadIssues = async () => {
-    setIssuesLoading(true);
     try {
       const res = await fetch("/api/lark?table=issues&limit=200");
       const json = await res.json();
@@ -101,7 +99,15 @@ export default function ReviewsPage() {
     setIssuesLoading(false);
   };
 
-  useEffect(() => { loadIssues(); }, []);
+  const refreshIssues = () => {
+    setIssuesLoading(true);
+    void loadIssues();
+  };
+
+  useEffect(() => {
+    const timer = setTimeout(() => { void loadIssues(); }, 0);
+    return () => clearTimeout(timer);
+  }, []);
 
   // 筛选待处理项
   const pendingIssues = useMemo(() => {
@@ -192,7 +198,7 @@ export default function ReviewsPage() {
         toast.success(json.pushSent
           ? "已保存 + 已推送管理人审核"
           : "已保存到飞书");
-        loadIssues(); // 刷新列表
+        refreshIssues(); // 刷新列表
       } else {
         toast.error("保存失败", { description: json.error });
       }
@@ -218,7 +224,7 @@ export default function ReviewsPage() {
             {pendingIssues.length > 0 && <span className="ml-2 text-orange-500 font-medium">{pendingIssues.length} 条待处理</span>}
           </p>
         </div>
-        <Button variant="outline" onClick={loadIssues} disabled={issuesLoading}>
+        <Button variant="outline" onClick={refreshIssues} disabled={issuesLoading}>
           {issuesLoading ? "⏳" : "🔄"} 刷新
         </Button>
       </div>

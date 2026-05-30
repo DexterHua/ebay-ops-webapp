@@ -3,17 +3,10 @@
 // ============================================================
 
 import { NextRequest, NextResponse } from "next/server";
-import { exec } from "child_process";
 import { writeFileSync, unlinkSync } from "fs";
+import { tmpdir } from "os";
 import { join } from "path";
-import { promisify } from "util";
-
-const execAsync = promisify(exec);
-const BASE_TOKEN = "RveVbcouwa06KcsDXcIc45AInkg";
-const TABLE_ID = "tbl1PtyuYfzXe2dt";
-const LARK_CLI = "/Users/chequan/.nvm/versions/node/v24.15.0/bin/lark-cli";
-const EXTRA_PATH = "/Users/chequan/.nvm/versions/node/v24.15.0/bin";
-const CWD = /* turbopackIgnore: true */ process.cwd();
+import { assertLarkWriteEnabled, getLarkBaseToken, getLarkTableId, runLarkCli } from "@/lib/lark-server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -21,6 +14,7 @@ export const dynamic = "force-dynamic";
 export async function POST(request: NextRequest) {
   const tmpFiles: string[] = [];
   try {
+    assertLarkWriteEnabled();
     const body = await request.json();
     const items = body.items as Array<{
       SKU: string; 商品名称: string; 橙联可售: number; 橙联在途: number;
@@ -32,7 +26,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, error: "items 为空" }, { status: 400 });
     }
 
-    const today = new Date().toISOString().slice(0, 10).replace(/-/g, "/");
+    const today = `${new Date().toISOString().slice(0, 10)} 00:00:00`;
     const BATCH = 50;
     const fields = ["SKU", "商品名称", "橙联可售", "橙联在途", "近7日日均销量", "补货点", "建议采购量", "预计断货日期", "采购优先级", "描述", "生成日期", "采购状态"];
     let totalWritten = 0;
@@ -45,20 +39,23 @@ export async function POST(request: NextRequest) {
       ]);
 
       const payload = JSON.stringify({ fields, rows: batch });
-      const fn = `_repl_batch_${i}.json`;
+      const fn = join(tmpdir(), `_repl_batch_${Date.now()}_${i}.json`);
       tmpFiles.push(fn);
-      writeFileSync(join(CWD, fn), payload);
+      writeFileSync(fn, payload);
 
-      const { stdout } = await execAsync(
-        `${LARK_CLI} base +record-batch-create --base-token ${BASE_TOKEN} --table-id ${TABLE_ID} --json @${fn} --as user`,
-        { maxBuffer: 10 * 1024 * 1024, cwd: CWD, env: { ...process.env, PATH: `${process.env.PATH}:${EXTRA_PATH}` } },
-      );
+      const { stdout } = await runLarkCli([
+        "base", "+record-batch-create",
+        "--base-token", getLarkBaseToken(),
+        "--table-id", getLarkTableId("replenish"),
+        "--json", `@${fn}`,
+        "--as", "user",
+      ]);
 
       const result = JSON.parse(stdout);
       if (result.ok) totalWritten += batch.length;
       else console.error("[replenish-batch] 写入失败:", JSON.stringify(result.error).slice(0, 200));
 
-      unlinkSync(join(CWD, fn));
+      unlinkSync(fn);
 
       if (i + BATCH < items.length) {
         await new Promise((r) => setTimeout(r, 500));
@@ -67,7 +64,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ success: true, written: totalWritten, total: items.length });
   } catch (error) {
-    tmpFiles.forEach((f) => { try { unlinkSync(join(CWD, f)); } catch { /* ok */ } });
+    tmpFiles.forEach((f) => { try { unlinkSync(f); } catch { /* ok */ } });
     return NextResponse.json({ success: false, error: (error as Error).message }, { status: 500 });
   }
 }

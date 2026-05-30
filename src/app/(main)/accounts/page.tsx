@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Separator } from "@/components/ui/separator";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { toast } from "sonner";
 
@@ -33,7 +32,6 @@ export default function AccountsPage() {
   const [showDelete, setShowDelete] = useState(false);
 
   const fetchUsers = useCallback(async () => {
-    setLoading(true);
     try {
       const [meRes, usersRes] = await Promise.all([
         fetch("/api/auth/me").then(r => r.json()),
@@ -49,7 +47,15 @@ export default function AccountsPage() {
     setLoading(false);
   }, []);
 
-  useEffect(() => { fetchUsers(); }, [fetchUsers]);
+  const refreshUsers = () => {
+    setLoading(true);
+    void fetchUsers();
+  };
+
+  useEffect(() => {
+    const timer = setTimeout(() => { void fetchUsers(); }, 0);
+    return () => clearTimeout(timer);
+  }, [fetchUsers]);
 
   // 新增用户
   const handleAdd = async () => {
@@ -60,7 +66,7 @@ export default function AccountsPage() {
       body: JSON.stringify({ action: "add", name: newName.trim(), password: newPass }),
     });
     const json = await res.json();
-    if (json.ok) { toast.success("用户已创建"); setShowAdd(false); setNewName(""); setNewPass(""); fetchUsers(); }
+    if (json.ok) { toast.success("用户已创建"); setShowAdd(false); setNewName(""); setNewPass(""); refreshUsers(); }
     else { toast.error(json.error); }
     setSaving(false);
   };
@@ -73,7 +79,7 @@ export default function AccountsPage() {
       body: JSON.stringify({ action: "delete", name: deleteTarget }),
     });
     const json = await res.json();
-    if (json.ok) { toast.success("用户已删除"); setShowDelete(false); setDeleteTarget(""); fetchUsers(); }
+    if (json.ok) { toast.success("用户已删除"); setShowDelete(false); setDeleteTarget(""); refreshUsers(); }
     else { toast.error(json.error); }
     setSaving(false);
   };

@@ -12,6 +12,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { callAIStructured } from "@/lib/ai";
 import { LISTING_SYSTEM_PROMPT, buildListingUserMessage } from "@/lib/prompts";
+import { sanitizeHtmlFragment } from "@/lib/sanitize-html";
 import { toast } from "sonner";
 
 // ============================================================
@@ -29,8 +30,8 @@ interface SkuFromLark {
   建议售价?: number;
   橙联在途?: number;
   本地库存?: number;
-  商品毛重g?: number;
-  商品尺寸含包装cm?: string;
+  "商品毛重（g）"?: number;
+  "商品尺寸（含包装）（cm）"?: string;
   SKU状态?: string[] | string;
   [key: string]: unknown;
 }
@@ -80,6 +81,10 @@ export default function ListingPage() {
   const [batchResults, setBatchResults] = useState<ListingRecord[]>([]);
   const [batchRunning, setBatchRunning] = useState(false);
   const [batchProgress, setBatchProgress] = useState({ done: 0, total: 0 });
+  const sanitizedPreviewHtml = useMemo(
+    () => sanitizeHtmlFragment(result?.descriptionHTML || ""),
+    [result?.descriptionHTML],
+  );
 
   // 页面加载
   useEffect(() => {
@@ -123,8 +128,6 @@ export default function ListingPage() {
 
     // 单选模式：填充表单
     const catStr = Array.isArray(item.类目) ? item.类目[0] : (item.类目 || "");
-    const statusStr = Array.isArray(item.SKU状态) ? item.SKU状态[0] : (item.SKU状态 || "");
-
     setSku(item.SKU || "");
     setChineseName(item.中文品名 || "");
     setEnglishKeywords(item.英文标题关键词 || "");
@@ -132,8 +135,8 @@ export default function ListingPage() {
     setSpecifications(
       [
         item.OEM ? `OEM: ${item.OEM}` : "",
-        item.商品毛重g ? `${item.商品毛重g}g` : "",
-        item.商品尺寸含包装cm ? `${item.商品尺寸含包装cm}cm` : "",
+        item["商品毛重（g）"] ? `${item["商品毛重（g）"]}g` : "",
+        item["商品尺寸（含包装）（cm）"] ? `${item["商品尺寸（含包装）（cm）"]}cm` : "",
       ].filter(Boolean).join(" | ")
     );
     setPurchasePrice(item.采购价 ? String(item.采购价) : "");
@@ -192,7 +195,7 @@ export default function ListingPage() {
       setBatchProgress({ done: i + 1, total: batchSkus.length });
 
       const catStr = Array.isArray(item.类目) ? item.类目[0] : (item.类目 || "");
-      const specs = [item.OEM ? `OEM: ${item.OEM}` : "", item.商品毛重g ? `${item.商品毛重g}g` : ""].filter(Boolean).join(" | ");
+      const specs = [item.OEM ? `OEM: ${item.OEM}` : "", item["商品毛重（g）"] ? `${item["商品毛重（g）"]}g` : ""].filter(Boolean).join(" | ");
 
       const userMessage = buildListingUserMessage({
         sku: item.SKU || "",
@@ -260,7 +263,7 @@ export default function ListingPage() {
     let done = 0;
     for (const record of unsaved) {
       try {
-        await fetch("/api/lark/save-listing", {
+        const res = await fetch("/api/lark/save-listing", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -272,6 +275,8 @@ export default function ListingPage() {
             itemSpecs: JSON.stringify(record.result.itemSpecs),
           }),
         });
+        const json = await res.json();
+        if (!res.ok || !json.success) continue;
         record.saved = true;
         done++;
       } catch { /* skip */ }
@@ -329,7 +334,7 @@ export default function ListingPage() {
                     </div>
                     <p className="text-sm font-medium text-gray-900">{selectedSkuMeta.中文品名}</p>
                     <p className="text-xs text-gray-500 mt-1">
-                      在途 {selectedSkuMeta.橙联在途 || 0}件 · 采购 ¥{selectedSkuMeta.采购价 || "-"}{selectedSkuMeta.商品毛重g ? ` · ${selectedSkuMeta.商品毛重g}g` : ""}
+                      在途 {selectedSkuMeta.橙联在途 || 0}件 · 采购 ¥{selectedSkuMeta.采购价 || "-"}{selectedSkuMeta["商品毛重（g）"] ? ` · ${selectedSkuMeta["商品毛重（g）"]}g` : ""}
                     </p>
                   </div>
                 ) : (
@@ -436,7 +441,7 @@ export default function ListingPage() {
                   <TabsContent value="preview">
                     <div className="border rounded-lg h-96 overflow-auto bg-white">
                       <div className="py-4">
-                        <div dangerouslySetInnerHTML={{ __html: result.descriptionHTML }} />
+                        <div dangerouslySetInnerHTML={{ __html: sanitizedPreviewHtml }} />
                       </div>
                     </div>
                     <p className="text-xs text-gray-400 mt-2 text-center">⚠️ 预览仅供参考，实际效果以 eBay 渲染为准</p>

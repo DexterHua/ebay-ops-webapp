@@ -15,7 +15,6 @@ import {
 // 📊 运营仪表盘
 // ============================================================
 
-const STORE_COLORS = ["#3b82f6", "#f59e0b", "#10b981", "#6b7280"];
 const CATEGORY_COLORS = ["#8b5cf6", "#ec4899", "#06b6d4", "#f97316", "#84cc16", "#6366f1"];
 const STATUS_COLORS: Record<string, string> = {
   "橙联在途": "#3b82f6", "待清点": "#f59e0b", "已上架": "#10b981",
@@ -194,7 +193,7 @@ export default function DashboardPage() {
             </BarChart>
           </ResponsiveContainer>
           <div className="grid grid-cols-3 gap-3 mt-3">
-            {storeInventory.map((s, i) => (
+            {storeInventory.map((s) => (
               <div key={s.name} className="text-center p-2 bg-gray-50 rounded">
                 <p className="text-xs text-gray-500">{s.name}</p>
                 <p className="text-lg font-bold mt-1 text-gray-800">{s.SKU数} <span className="text-xs font-normal text-gray-400">SKU</span></p>

@@ -4,8 +4,6 @@ import React, { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -96,11 +94,11 @@ function SkuForm() {
   const defaultForm = {
     SKU: "", 中文品名: "", 英文标题关键词: "", OEM: "",
     类目: "Others", 供应商: "KY", SKU状态: "待清点", 风险标签: "低风险",
-    商品毛重g: "", 商品尺寸含包装cm: "", 负责人: "", 描述: "", 备注: "",
+    "商品毛重（g）": "", "商品尺寸（含包装）（cm）": "", 负责人: "", 描述: "", 备注: "",
   };
   const [form, setForm] = useState(defaultForm);
 
-  const numericFields = ["商品毛重g"];
+  const numericFields = ["商品毛重（g）"];
 
   const handleSubmit = async () => {
     if (!form.SKU || !form.中文品名) { toast.error("请至少填写 SKU 和 中文品名"); return; }
@@ -124,8 +122,8 @@ function SkuForm() {
           <div className="col-span-2"><label className="text-[10px] text-gray-400">英文标题关键词</label><Input {...f("英文标题关键词")} placeholder="Steering Wheel Clock Spring" /></div>
           <div><label className="text-[10px] text-gray-400">类目</label><Select value={form.类目} onValueChange={(v) => setForm({...form, 类目: v || "Others"})}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{["Clock Spring","Carburetor","Others"].map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent></Select></div>
           <div><label className="text-[10px] text-gray-400">OEM</label><Input {...f("OEM")} placeholder="84306-0E010*1" /></div>
-          <div><label className="text-[10px] text-gray-400">商品毛重(g)</label><Input {...f("商品毛重g")} type="number" /></div>
-          <div><label className="text-[10px] text-gray-400">尺寸(cm)</label><Input {...f("商品尺寸含包装cm")} placeholder="13.2*13.2*9.4" /></div>
+          <div><label className="text-[10px] text-gray-400">商品毛重(g)</label><Input {...f("商品毛重（g）")} type="number" /></div>
+          <div><label className="text-[10px] text-gray-400">尺寸(cm)</label><Input {...f("商品尺寸（含包装）（cm）")} placeholder="13.2*13.2*9.4" /></div>
         </div>
       </div>
 
@@ -238,6 +236,18 @@ function StockForm({ skuList, today }: { skuList: SkuOption[]; today: string }) 
   const LOCATIONS = ["本地仓", "橙联在途", "橙联可售", "不良品", "退货待检"];
 
   const [form, setForm] = useState({ SKU: "", 日期: today, 变动类型: "到货入库", 库存位置: "本地仓", 数量变动: "", 相关单号: "", 操作人: "", 备注: "" });
+  const [skuQuery, setSkuQuery] = useState("");
+  const [showSku, setShowSku] = useState(false);
+
+  const matched = skuQuery.trim()
+    ? skuList.filter(s => s.SKU?.toLowerCase().includes(skuQuery.toLowerCase()) || s.中文品名?.toLowerCase().includes(skuQuery.toLowerCase()))
+    : [];
+
+  const handleSkuSelect = (s: SkuOption) => {
+    setForm({ ...form, SKU: s.SKU || "" });
+    setSkuQuery(s.SKU || "");
+    setShowSku(false);
+  };
 
   const handleSubmit = async () => {
     if (!form.SKU || !form.数量变动) { toast.error("请填写 SKU 和 数量变动"); return; }
@@ -248,11 +258,33 @@ function StockForm({ skuList, today }: { skuList: SkuOption[]; today: string }) 
   return <Card>
     <CardHeader><CardTitle className="text-base">📦 库存变动记录</CardTitle><CardDescription>每次库存变动记一笔，写入 02_库存流水</CardDescription></CardHeader>
     <CardContent className="grid grid-cols-2 gap-3">
-      <div className="col-span-2"><label className="text-xs text-gray-400">SKU *</label>
-        <Select value={form.SKU} onValueChange={(v) => setForm({...form, SKU: v || ""})}>
-          <SelectTrigger><SelectValue placeholder="选择 SKU" /></SelectTrigger>
-          <SelectContent><ScrollArea className="max-h-60">{skuList.map((s, i) => <SelectItem key={String(s._idx ?? i)} value={s.SKU || ""}>{s.SKU} — {s.中文品名}</SelectItem>)}</ScrollArea></SelectContent>
-        </Select>
+      <div className="relative col-span-2"><label className="text-xs text-gray-400">SKU *</label>
+        <Input
+          placeholder="输入 SKU 编码或品名…"
+          value={skuQuery}
+          onChange={e => {
+            setSkuQuery(e.target.value);
+            setForm({ ...form, SKU: "" });
+            setShowSku(true);
+          }}
+          onFocus={() => { if (skuQuery) setShowSku(true); }}
+          onBlur={() => setTimeout(() => setShowSku(false), 200)}
+        />
+        {showSku && matched.length > 0 && (
+          <div className="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-hidden">
+            <ScrollArea className="max-h-48">
+              {matched.map((s, i) => (
+                <button key={String(s._idx ?? i)} className="w-full text-left px-3 py-2 hover:bg-blue-50 border-b border-gray-50 last:border-b-0" onMouseDown={() => handleSkuSelect(s)}>
+                  <span className="text-sm font-medium text-gray-900">{s.SKU}</span>
+                  <span className="text-xs text-gray-400 ml-2">{s.中文品名}</span>
+                </button>
+              ))}
+            </ScrollArea>
+          </div>
+        )}
+        {showSku && skuQuery && matched.length === 0 && (
+          <div className="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg p-2 text-center text-sm text-gray-400">未匹配</div>
+        )}
       </div>
       <div><label className="text-xs text-gray-400">变动类型 *</label><Select value={form.变动类型} onValueChange={(v) => setForm({...form,变动类型: v || "到货入库"})}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{MOVEMENT_TYPES.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent></Select></div>
       <div><label className="text-xs text-gray-400">库存位置</label><Select value={form.库存位置} onValueChange={(v) => setForm({...form,库存位置: v || "本地仓"})}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{LOCATIONS.map(l => <SelectItem key={l} value={l}>{l}</SelectItem>)}</SelectContent></Select></div>
@@ -272,25 +304,56 @@ function StockForm({ skuList, today }: { skuList: SkuOption[]; today: string }) 
 function IssuesForm({ skuList, today }: { skuList: SkuOption[]; today: string }) {
   const { submitting, submit } = useSubmit();
   const ISSUE_TYPES = ["买家消息", "差评风险", "纠纷Case", "退货", "退款", "取消请求", "物流异常", "商品质量", "账号风险"];
-  const PROBLEM_OPTS = ["已接单但暂无轨迹", "询问兼容型号"];
-  const ACTIONS = ["跟进橙联轨迹", "已回复"];
-
   const [form, setForm] = useState({ SKU: "", 订单号: "", 店铺: "NewPower", 异常类型: "买家消息", 问题描述: "", 优先级: "中", 状态: "待办", 责任人: "", 描述: "", 备注: "", 创建日期: today });
+  const [skuQuery, setSkuQuery] = useState("");
+  const [showSku, setShowSku] = useState(false);
+
+  const matched = skuQuery.trim()
+    ? skuList.filter(s => s.SKU?.toLowerCase().includes(skuQuery.toLowerCase()) || s.中文品名?.toLowerCase().includes(skuQuery.toLowerCase()))
+    : [];
+
+  const handleSkuSelect = (s: SkuOption) => {
+    setForm({ ...form, SKU: s.SKU || "" });
+    setSkuQuery(s.SKU || "");
+    setShowSku(false);
+  };
 
   const handleSubmit = async () => {
     if (!form.SKU) { toast.error("请填写 SKU"); return; }
-    await submit("issues", form);
-    if (true) setForm({ ...form, 订单号: "", 描述: "", 备注: "" });
+    const ok = await submit("issues", form);
+    if (ok) setForm({ ...form, 订单号: "", 描述: "", 备注: "" });
   };
 
   return <Card>
     <CardHeader><CardTitle className="text-base">🎫 客服售后记录</CardTitle><CardDescription>收到买家消息/评价/纠纷时录入，写入 08_客服售后异常</CardDescription></CardHeader>
     <CardContent className="grid grid-cols-2 gap-3">
-      <div><label className="text-xs text-gray-400">SKU *</label>
-        <Select value={form.SKU} onValueChange={(v) => setForm({...form, SKU: v || ""})}>
-          <SelectTrigger><SelectValue placeholder="选择 SKU" /></SelectTrigger>
-          <SelectContent><ScrollArea className="max-h-60">{skuList.map((s, i) => <SelectItem key={String(s._idx ?? i)} value={s.SKU || ""}>{s.SKU}</SelectItem>)}</ScrollArea></SelectContent>
-        </Select>
+      <div className="relative"><label className="text-xs text-gray-400">SKU *</label>
+        <Input
+          placeholder="输入 SKU 编码或品名…"
+          value={skuQuery}
+          onChange={e => {
+            setSkuQuery(e.target.value);
+            setForm({ ...form, SKU: "" });
+            setShowSku(true);
+          }}
+          onFocus={() => { if (skuQuery) setShowSku(true); }}
+          onBlur={() => setTimeout(() => setShowSku(false), 200)}
+        />
+        {showSku && matched.length > 0 && (
+          <div className="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-hidden">
+            <ScrollArea className="max-h-48">
+              {matched.map((s, i) => (
+                <button key={String(s._idx ?? i)} className="w-full text-left px-3 py-2 hover:bg-blue-50 border-b border-gray-50 last:border-b-0" onMouseDown={() => handleSkuSelect(s)}>
+                  <span className="text-sm font-medium text-gray-900">{s.SKU}</span>
+                  <span className="text-xs text-gray-400 ml-2">{s.中文品名}</span>
+                </button>
+              ))}
+            </ScrollArea>
+          </div>
+        )}
+        {showSku && skuQuery && matched.length === 0 && (
+          <div className="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg p-2 text-center text-sm text-gray-400">未匹配</div>
+        )}
       </div>
       <div><label className="text-xs text-gray-400">订单号</label><Input value={form.订单号} onChange={e => setForm({...form, 订单号: e.target.value})} /></div>
       <div><label className="text-xs text-gray-400">店铺</label><Select value={form.店铺} onValueChange={(v) => setForm({...form, 店铺: v || "NewPower"})}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{STORES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent></Select></div>
@@ -312,6 +375,18 @@ function IssuesForm({ skuList, today }: { skuList: SkuOption[]; today: string })
 function CompetitorForm({ skuList, today }: { skuList: SkuOption[]; today: string }) {
   const { submitting, submit } = useSubmit();
   const [form, setForm] = useState({ SKU: "", 关键词: "", 竞品链接: "", 竞品售价: "", 竞品运费: "0", 我方售价: "", 竞品总价: "", 价差: "", "销量|观察": "", 动作建议: "", 负责人: "", 记录日期: today, 备注: "" });
+  const [skuQuery, setSkuQuery] = useState("");
+  const [showSku, setShowSku] = useState(false);
+
+  const matched = skuQuery.trim()
+    ? skuList.filter(s => s.SKU?.toLowerCase().includes(skuQuery.toLowerCase()) || s.中文品名?.toLowerCase().includes(skuQuery.toLowerCase()))
+    : [];
+
+  const handleSkuSelect = (s: SkuOption) => {
+    setForm({ ...form, SKU: s.SKU || "" });
+    setSkuQuery(s.SKU || "");
+    setShowSku(false);
+  };
 
   const calcDiff = () => {
     const comp = parseFloat(form.竞品售价) || 0; const us = parseFloat(form.我方售价) || 0;
@@ -333,11 +408,33 @@ function CompetitorForm({ skuList, today }: { skuList: SkuOption[]; today: strin
   return <Card>
     <CardHeader><CardTitle className="text-base">🔍 竞品价格监控</CardTitle><CardDescription>记录竞品价格变动，写入 09_竞品价格监控</CardDescription></CardHeader>
     <CardContent className="grid grid-cols-2 gap-3">
-      <div><label className="text-xs text-gray-400">SKU *</label>
-        <Select value={form.SKU} onValueChange={(v) => setForm({...form, SKU: v || ""})}>
-          <SelectTrigger><SelectValue placeholder="选择我方 SKU" /></SelectTrigger>
-          <SelectContent><ScrollArea className="max-h-60">{skuList.map((s, i) => <SelectItem key={String(s._idx ?? i)} value={s.SKU || ""}>{s.SKU} — {s.中文品名}</SelectItem>)}</ScrollArea></SelectContent>
-        </Select>
+      <div className="relative"><label className="text-xs text-gray-400">SKU *</label>
+        <Input
+          placeholder="输入 SKU 编码或品名…"
+          value={skuQuery}
+          onChange={e => {
+            setSkuQuery(e.target.value);
+            setForm({ ...form, SKU: "" });
+            setShowSku(true);
+          }}
+          onFocus={() => { if (skuQuery) setShowSku(true); }}
+          onBlur={() => setTimeout(() => setShowSku(false), 200)}
+        />
+        {showSku && matched.length > 0 && (
+          <div className="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-hidden">
+            <ScrollArea className="max-h-48">
+              {matched.map((s, i) => (
+                <button key={String(s._idx ?? i)} className="w-full text-left px-3 py-2 hover:bg-blue-50 border-b border-gray-50 last:border-b-0" onMouseDown={() => handleSkuSelect(s)}>
+                  <span className="text-sm font-medium text-gray-900">{s.SKU}</span>
+                  <span className="text-xs text-gray-400 ml-2">{s.中文品名}</span>
+                </button>
+              ))}
+            </ScrollArea>
+          </div>
+        )}
+        {showSku && skuQuery && matched.length === 0 && (
+          <div className="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg p-2 text-center text-sm text-gray-400">未匹配</div>
+        )}
       </div>
       <div><label className="text-xs text-gray-400">搜索关键词</label><Input value={form.关键词} onChange={e => setForm({...form, 关键词: e.target.value})} /></div>
       <div className="col-span-2"><label className="text-xs text-gray-400">竞品链接</label><Input value={form.竞品链接} onChange={e => setForm({...form, 竞品链接: e.target.value})} placeholder="https://www.ebay.com/itm/..." /></div>
