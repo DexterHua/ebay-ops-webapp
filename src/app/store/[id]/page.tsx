@@ -244,7 +244,7 @@ export default function StorePage({ params }: { params: Promise<{ id: string }> 
                       <td className="py-2 px-2 text-right">¥{s.采购价 || "--"}</td>
                       <td className="py-2 px-2 text-right">¥{s.单件总成本 || "--"}</td>
                       <td className="py-2 px-2 text-right font-medium">${s.建议售价 || "--"}</td>
-                      <td className="py-2 px-2 text-right font-medium text-emerald-600">{s.预估毛利 ? `¥${s.预估毛利.toFixed(1)}` : "--"}</td>
+                      <td className="py-2 px-2 text-right font-medium text-emerald-600">{s.预估毛利 ? `¥${Number(s.预估毛利).toFixed(1)}` : "--"}</td>
                       <td className="py-2 px-2 text-right">{margin}</td>
                       <td className="py-2 px-2"><Badge variant="outline" className="text-[10px]">{status}</Badge></td>
                     </tr>
