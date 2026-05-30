@@ -137,6 +137,7 @@ export const STORES: Store[] = [
 ];
 
 export const MODULES = [
+  { id: "dashboard", name: "📊 运营仪表盘", path: "/dashboard", description: "图表化数据看板，库存/销售/售后总览" },
   { id: "inventory", name: "📦 库存监控", path: "/inventory", description: "实时库存监控与智能补货建议" },
   { id: "listing", name: "🖼️ 详情页生成", path: "/listing", description: "AI生成eBay标题、描述与ItemSpecs" },
   { id: "reviews", name: "📝 评论回复", path: "/reviews", description: "智能生成评价回复草稿" },
