@@ -119,7 +119,7 @@ function SalesForm({ skuList, today }: { skuList: SkuOption[]; today: string }) 
           <SelectTrigger><SelectValue placeholder="选择 SKU" /></SelectTrigger>
           <SelectContent>
             <ScrollArea className="max-h-60">
-              {skuList.map(s => <SelectItem key={s.SKU} value={s.SKU || ""}>{s.SKU} — {s.中文品名}</SelectItem>)}
+              {skuList.map((s, i) => <SelectItem key={String(s._idx ?? i)} value={s.SKU || ""}>{s.SKU} — {s.中文品名}</SelectItem>)}
             </ScrollArea>
           </SelectContent>
         </Select>
@@ -162,7 +162,7 @@ function StockForm({ skuList, today }: { skuList: SkuOption[]; today: string }) 
       <div className="col-span-2"><label className="text-xs text-gray-400">SKU *</label>
         <Select value={form.SKU} onValueChange={(v) => setForm({...form, SKU: v || ""})}>
           <SelectTrigger><SelectValue placeholder="选择 SKU" /></SelectTrigger>
-          <SelectContent><ScrollArea className="max-h-60">{skuList.map(s => <SelectItem key={s.SKU} value={s.SKU || ""}>{s.SKU} — {s.中文品名}</SelectItem>)}</ScrollArea></SelectContent>
+          <SelectContent><ScrollArea className="max-h-60">{skuList.map((s, i) => <SelectItem key={String(s._idx ?? i)} value={s.SKU || ""}>{s.SKU} — {s.中文品名}</SelectItem>)}</ScrollArea></SelectContent>
         </Select>
       </div>
       <div><label className="text-xs text-gray-400">变动类型 *</label><Select value={form.变动类型} onValueChange={(v) => setForm({...form,变动类型: v || "到货入库"})}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{MOVEMENT_TYPES.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent></Select></div>
@@ -200,7 +200,7 @@ function IssuesForm({ skuList, today }: { skuList: SkuOption[]; today: string })
       <div><label className="text-xs text-gray-400">SKU *</label>
         <Select value={form.SKU} onValueChange={(v) => setForm({...form, SKU: v || ""})}>
           <SelectTrigger><SelectValue placeholder="选择 SKU" /></SelectTrigger>
-          <SelectContent><ScrollArea className="max-h-60">{skuList.map(s => <SelectItem key={s.SKU} value={s.SKU || ""}>{s.SKU}</SelectItem>)}</ScrollArea></SelectContent>
+          <SelectContent><ScrollArea className="max-h-60">{skuList.map((s, i) => <SelectItem key={String(s._idx ?? i)} value={s.SKU || ""}>{s.SKU}</SelectItem>)}</ScrollArea></SelectContent>
         </Select>
       </div>
       <div><label className="text-xs text-gray-400">订单号</label><Input value={form.订单号} onChange={e => setForm({...form, 订单号: e.target.value})} /></div>
@@ -247,7 +247,7 @@ function CompetitorForm({ skuList, today }: { skuList: SkuOption[]; today: strin
       <div><label className="text-xs text-gray-400">SKU *</label>
         <Select value={form.SKU} onValueChange={(v) => setForm({...form, SKU: v || ""})}>
           <SelectTrigger><SelectValue placeholder="选择我方 SKU" /></SelectTrigger>
-          <SelectContent><ScrollArea className="max-h-60">{skuList.map(s => <SelectItem key={s.SKU} value={s.SKU || ""}>{s.SKU} — {s.中文品名}</SelectItem>)}</ScrollArea></SelectContent>
+          <SelectContent><ScrollArea className="max-h-60">{skuList.map((s, i) => <SelectItem key={String(s._idx ?? i)} value={s.SKU || ""}>{s.SKU} — {s.中文品名}</SelectItem>)}</ScrollArea></SelectContent>
         </Select>
       </div>
       <div><label className="text-xs text-gray-400">搜索关键词</label><Input value={form.关键词} onChange={e => setForm({...form, 关键词: e.target.value})} /></div>
