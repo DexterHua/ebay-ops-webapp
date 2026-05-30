@@ -16,8 +16,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "eBay 运营中心 — AI-Powered Operations",
-  description: "eBay团队日常运营工具：库存监控、详情页生成、评论回复、选品助手",
+  title: "烁立德运营中心 · eBay AI Operations",
+  description: "烁立德eBay团队日常运营工具：库存监控、详情页生成、评论回复、选品助手、数据仪表盘",
 };
 
 export default function RootLayout({
@@ -30,11 +30,11 @@ export default function RootLayout({
       lang="zh-CN"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="h-full flex">
+      <body className="h-full flex bg-white">
         <Sidebar />
-        <main className="flex-1 ml-60 flex flex-col min-h-screen">
+        <main className="flex-1 ml-56 flex flex-col min-h-screen bg-white">
           <Header />
-          <div className="flex-1 bg-gray-50 p-6">
+          <div className="flex-1 bg-gray-50/60 p-5">
             {children}
           </div>
         </main>

@@ -1,55 +1,43 @@
 import Link from "next/link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { MODULES } from "@/types";
+
+const EXTRA_DESC: Record<string, string> = {
+  dashboard: "库存看板 · 销售趋势 · 售后分布 · 流程追踪 — 一张图看懂全局 →",
+  inventory: "实时监控海外仓库存 · AI预测断货时间 · 智能补货建议 →",
+  listing: "SKU自动选择 → AI生成eBay标题/HTML描述/ItemSpecs → 保存飞书 →",
+  reviews: "飞书待办列表 → AI分析买家消息 → 生成回复草稿 → 回写飞书 →",
+  sourcing: "品类关键词 → AI市场分析 → 利润预估 + 风险评分 → 保存选品池 →",
+  dataEntry: "SKU主数据 · 销售日报 · 库存流水 · 客服异常 · 竞品监控 — 一站式录入 →",
+};
 
 export default function Home() {
   return (
-    <div className="space-y-6 max-w-5xl">
+    <div className="space-y-5 max-w-4xl">
       {/* 欢迎区 */}
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">👋 欢迎回来，车泉</h1>
-        <p className="text-gray-500 mt-1">eBay 四店铺运营管理 · NewPower / VelocityGear / TitanRig 运营中 · Nexusmoto 待启用</p>
+        <p className="text-xs text-gray-400 uppercase tracking-wider font-medium">概述</p>
+        <h1 className="text-xl font-bold text-gray-900 mt-1">欢迎回来，车泉</h1>
+        <p className="text-sm text-gray-500 mt-1">
+          NewPower · VelocityGear · TitanRig 运营中 &nbsp;|&nbsp; 56 SKU · 1,295 件在途 · 货值 ¥27,482
+        </p>
       </div>
 
-      {/* 快速概览卡片 */}
-      <div className="grid grid-cols-4 gap-4">
-        {[
-          { label: "在售 SKU", value: "--", sub: "开售后显示" },
-          { label: "待处理异常", value: "--", sub: "开售后显示" },
-          { label: "本周需补货", value: "--", sub: "开售后显示" },
-          { label: "30天销售额", value: "--", sub: "开售后显示" },
-        ].map((stat) => (
-          <Card key={stat.label}>
-            <CardContent className="p-4">
-              <p className="text-sm text-gray-500">{stat.label}</p>
-              <p className="text-2xl font-bold mt-1">{stat.value}</p>
-              <p className="text-xs text-gray-400 mt-0.5">{stat.sub}</p>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-
-      {/* 模块入口 */}
-      <div className="grid grid-cols-2 gap-4">
+      {/* 快速入口 */}
+      <p className="text-xs text-gray-400 uppercase tracking-wider font-medium pt-2">功能模块</p>
+      <div className="grid grid-cols-2 gap-3">
         {MODULES.map((mod) => (
           <Link key={mod.id} href={mod.path}>
-            <Card className="hover:shadow-md transition-shadow cursor-pointer border-gray-200 hover:border-gray-400 h-full">
+            <Card className="hover:shadow-sm hover:border-gray-300 transition-all cursor-pointer border-gray-200 h-full group">
               <CardHeader className="pb-2">
-                <CardTitle className="text-lg flex items-center gap-2">
+                <CardTitle className="text-sm flex items-center gap-2">
                   {mod.name}
-                  {mod.id === "inventory" && (
-                    <Badge className="text-xs bg-red-100 text-red-700 border-0">优先开发</Badge>
-                  )}
                 </CardTitle>
-                <CardDescription>{mod.description}</CardDescription>
+                <CardDescription className="text-xs">{mod.description}</CardDescription>
               </CardHeader>
-              <CardContent>
-                <p className="text-sm text-gray-400">
-                  {mod.id === "inventory" && "实时监控海外仓库存，AI预测断货时间并给出补货建议 →"}
-                  {mod.id === "listing" && "从SKU数据读取 → AI生成标题/描述/ItemSpecs → 多版本对比 →"}
-                  {mod.id === "reviews" && "输入买家评价 → AI情感分析 → 生成对应语气回复草稿 →"}
-                  {mod.id === "sourcing" && "输入品类关键词 → AI市场分析 → 利润预估+风险评分 →"}
+              <CardContent className="pt-0">
+                <p className="text-[12px] text-gray-400 group-hover:text-gray-600 transition-colors leading-relaxed">
+                  {EXTRA_DESC[mod.id] || ""}
                 </p>
               </CardContent>
             </Card>
