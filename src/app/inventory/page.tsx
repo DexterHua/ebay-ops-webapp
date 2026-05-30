@@ -21,25 +21,35 @@ interface LarkSkuRecord {
   SKU?: string;
   中文品名?: string;
   英文标题关键词?: string;
-  类目?: string;
+  类目?: string | string[];
   采购价?: number;
   建议售价?: number;
   头程成本件?: number;
   橙联可售?: number;
   橙联在途?: number;
   本地库存?: number;
-  近7日日均销量?: number;
-  可售天数?: string;
+  "日均销量(自动)"?: number;  // ✅ 公式字段：优先销售日报自动汇总，无数据用人工值
+  可售天数?: string;          // ✅ 公式字段：自动计算
   安全库存?: number;
-  补货点?: number;
+  补货点?: number;            // ✅ 公式字段：自动计算
   补货周期天数?: number;
-  SKU状态?: string;
-  补货状态?: string;
+  SKU状态?: string | string[];
+  补货状态?: string;          // ✅ 公式字段：自动判定
   负责人?: string;
-  供应商?: string;
-  预估毛利率?: number;
-  风险标签?: string;
+  供应商?: string | string[];
+  预估毛利率?: number;        // ✅ 公式字段：自动计算
+  预估毛利?: number;          // ✅ 公式字段：自动计算
+  单件总成本?: number;        // ✅ 公式字段：自动计算
+  总可用库存?: number;        // ✅ 公式字段：自动计算
+  累计销量?: number;          // ✅ lookup：从07_销售日报自动汇总
+  销售记录天数?: number;      // ✅ lookup：从07_销售日报自动计数
+  风险标签?: string | string[];
   广告费率?: number;
+  eBay费率?: number;
+  橙联履约预估件?: number;
+  OEM?: string;
+  商品毛重g?: number;
+  商品尺寸含包装cm?: string;
   [key: string]: unknown;
 }
 
@@ -58,6 +68,8 @@ interface SkuForAI {
   cost: number;
   category: string;
   status: string;
+  totalSales: number;
+  autoDailySales: number;
 }
 
 interface AIAnalysisResult {
@@ -103,24 +115,30 @@ export default function InventoryPage() {
         return;
       }
 
-      // 转换为 AI 分析的输入格式
+      // 转换为 AI 分析的输入格式（优先使用公式自动计算值）
       const converted = (json.data as LarkSkuRecord[])
         .filter((r) => r.SKU && r.中文品名) // 至少要有 SKU 和品名
-        .map((r) => ({
-          sku: r.SKU || "",
-          productName: r.中文品名 || "",
-          available: r.橙联可售 || 0,
-          inTransit: r.橙联在途 || 0,
-          local: r.本地库存 || 0,
-          dailySales: r.近7日日均销量 || 0,
-          salesTrend: "尚无销售数据",
-          replenishCycle: r.补货周期天数 || 30,
-          profitMargin: r.预估毛利率 || 0,
-          safetyStock: r.安全库存 || 0,
-          cost: r.采购价 || 0,
-          category: r.类目 || "未分类",
-          status: Array.isArray(r.SKU状态) ? r.SKU状态[0] : (r.SKU状态 || "未知"),
-        }));
+        .map((r) => {
+          const dailySales = r["日均销量(自动)"] || 0;
+          const hasSalesData = (r.累计销量 || 0) > 0;
+          return {
+            sku: r.SKU || "",
+            productName: r.中文品名 || "",
+            available: r.橙联可售 || 0,
+            inTransit: r.橙联在途 || 0,
+            local: r.本地库存 || 0,
+            dailySales,
+            salesTrend: hasSalesData ? "已有销售数据" : dailySales > 0 ? "人工估算" : "尚无销售数据",
+            replenishCycle: r.补货周期天数 || 30,
+            profitMargin: r.预估毛利率 || 0,
+            safetyStock: r.安全库存 || 0,
+            cost: r.采购价 || 0,
+            category: Array.isArray(r.类目) ? r.类目[0] : (r.类目 || "未分类"),
+            status: Array.isArray(r.SKU状态) ? r.SKU状态[0] : (r.SKU状态 || "未知"),
+            totalSales: r.累计销量 || 0,
+            autoDailySales: dailySales,
+          };
+        });
 
       setSkus(converted);
       toast.success(`已加载 ${converted.length} 个 SKU`, {

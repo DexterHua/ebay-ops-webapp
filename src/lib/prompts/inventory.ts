@@ -79,6 +79,8 @@ export function buildInventoryUserMessage(skus: Array<{
   cost: number;
   category: string;
   status: string;
+  totalSales: number;
+  autoDailySales: number;
 }>): string {
   // 按分类分组显示
   const byCategory: Record<string, typeof skus> = {};
@@ -107,7 +109,10 @@ export function buildInventoryUserMessage(skus: Array<{
     const catCost = items.reduce((sum, s) => sum + s.cost * s.inTransit, 0);
     output += `\n### ${cat}（${items.length}个SKU，在途${catInTransit}件，货值约¥${catCost.toFixed(0)}）\n`;
     items.forEach((s) => {
-      output += `  ${s.sku} | ${s.productName} | 采购价¥${s.cost} | 在途${s.inTransit}件 | 本地${s.local}件 | 补货周期${s.replenishCycle}天 | 状态:${s.status}\n`;
+      const dsLabel = s.totalSales > 0
+        ? `日均${s.dailySales}件（✅自动：累计${s.totalSales}件）`
+        : `日均${s.dailySales}件（⚠️人工：尚无销售记录）`;
+      output += `  ${s.sku} | ${s.productName} | 采购¥${s.cost} | 在途${s.inTransit}件 | 本地${s.local}件 | 补货${s.replenishCycle}天 | ${dsLabel} | ${s.status}\n`;
     });
   }
 
