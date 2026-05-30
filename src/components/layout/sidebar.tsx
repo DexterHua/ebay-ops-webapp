@@ -1,6 +1,5 @@
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
@@ -14,12 +13,10 @@ export function Sidebar() {
       {/* Logo 区域 */}
       <div className="px-5 py-4 border-b border-gray-100">
         <Link href="/" className="flex items-center gap-3">
-          <Image
+          <img
             src="/logo.png"
             alt="烁立德"
-            width={36}
-            height={36}
-            className="rounded-md shrink-0"
+            className="h-8 w-8 rounded-md shrink-0 object-contain"
           />
           <div>
             <h1 className="text-sm font-bold text-gray-900 leading-tight">烁立德运营中心</h1>
