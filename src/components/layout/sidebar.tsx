@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
@@ -7,6 +8,16 @@ import { MODULES } from "@/types";
 
 export function Sidebar() {
   const pathname = usePathname();
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    fetch("/api/auth/me")
+      .then((r) => r.json())
+      .then((d) => { if (d.isAdmin) setIsAdmin(true); })
+      .catch(() => {});
+  }, []);
+
+  const modules = MODULES.filter((m) => !(m as { adminOnly?: boolean }).adminOnly || isAdmin);
 
   return (
     <aside className="w-56 h-screen bg-white text-gray-700 flex flex-col fixed left-0 top-0 border-r border-gray-200">
@@ -27,7 +38,7 @@ export function Sidebar() {
 
       {/* 导航 */}
       <nav className="flex-1 px-3 py-3 space-y-0.5 overflow-y-auto">
-        {MODULES.map((mod) => {
+        {modules.map((mod) => {
           const isActive = pathname === mod.path || pathname.startsWith(mod.path + "/");
           const icon = mod.name.split(" ")[0];
           const label = mod.name.split(" ").slice(1).join(" ");

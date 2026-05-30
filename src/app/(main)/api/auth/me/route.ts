@@ -8,11 +8,11 @@ export async function GET() {
   try {
     const cookieStore = await cookies();
     const token = cookieStore.get("auth_token")?.value;
-    if (!token) return NextResponse.json({ name: null }, { status: 401 });
+    if (!token) return NextResponse.json({ name: null, isAdmin: false }, { status: 401 });
 
     const { payload } = await jwtVerify(token, JWT_SECRET);
-    return NextResponse.json({ name: payload.name as string });
+    return NextResponse.json({ name: payload.name as string, isAdmin: !!payload.isAdmin });
   } catch {
-    return NextResponse.json({ name: null }, { status: 401 });
+    return NextResponse.json({ name: null, isAdmin: false }, { status: 401 });
   }
 }
