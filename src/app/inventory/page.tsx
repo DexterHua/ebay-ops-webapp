@@ -102,6 +102,7 @@ export default function InventoryPage() {
   const [skusError, setSkusError] = useState("");
   const [analyzing, setAnalyzing] = useState(false);
   const [analysis, setAnalysis] = useState<AIAnalysisResult | null>(null);
+  const [savingReplenish, setSavingReplenish] = useState(false);
 
   // 页面加载时从飞书读取 SKU 数据
   const fetchSkus = useCallback(async () => {
@@ -181,6 +182,54 @@ export default function InventoryPage() {
     setAnalyzing(false);
   };
 
+  // 保存补货建议到飞书 10_补货采购建议
+  const saveReplenishToFeishu = async () => {
+    if (!analysis || analysis.analysis.length === 0) {
+      toast.error("请先运行 AI 补货分析");
+      return;
+    }
+
+    setSavingReplenish(true);
+    const priorityMap: Record<string, string> = {
+      urgent: "紧急", this_week: "本周", this_month: "本月", normal: "正常",
+    };
+
+    const items = analysis.analysis.map((a) => {
+      const skuData = skus.find((s) => s.sku === a.sku);
+      return {
+        SKU: a.sku,
+        商品名称: a.productName,
+        橙联可售: a.currentStock.available,
+        橙联在途: a.currentStock.inTransit,
+        近7日日均销量: a.dailySales,
+        补货点: String(skuData?.safetyStock || 0),
+        建议采购量: a.suggestedOrderQty,
+        预计断货日期: a.suggestedOrderDate === "N/A" ? "待定" : a.suggestedOrderDate,
+        采购优先级: priorityMap[a.priority] || "正常",
+        描述: a.aiSummary,
+      };
+    });
+
+    try {
+      const res = await fetch("/api/lark/save-replenish-batch", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ items }),
+      });
+      const json = await res.json();
+      if (json.success) {
+        toast.success(`已保存 ${json.written}/${json.total} 条补货建议到飞书`, {
+          description: "写入表：10_补货采购建议",
+        });
+      } else {
+        toast.error("保存失败", { description: json.error });
+      }
+    } catch {
+      toast.error("保存失败，网络错误");
+    }
+    setSavingReplenish(false);
+  };
+
   const getPriorityColor = (priority: string) => {
     switch (priority) {
       case "urgent": return "destructive" as const;
@@ -226,6 +275,15 @@ export default function InventoryPage() {
           <Button onClick={runAnalysis} disabled={analyzing || skus.length === 0} size="lg">
             {analyzing ? "⏳ AI 分析中..." : "🚀 运行 AI 补货分析"}
           </Button>
+          {analysis && analysis.analysis.length > 0 && (
+            <Button
+              variant="outline"
+              onClick={saveReplenishToFeishu}
+              disabled={savingReplenish}
+            >
+              {savingReplenish ? "⏳ 保存中..." : "💾 保存补货建议到飞书"}
+            </Button>
+          )}
         </div>
       </div>
 
