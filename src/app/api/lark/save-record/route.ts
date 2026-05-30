@@ -20,6 +20,7 @@ const TABLE_MAP: Record<string, string> = {
   issues: "tbl3cCCTik5VVO7I",       // 08_客服售后异常
   competitors: "tbl4QQLO4Exf0ErU",  // 09_竞品价格监控
   replenish: "tbl1PtyuYfzXe2dt",    // 10_补货采购建议
+  sourcing: "tblqnSLNGWFURtQq",     // 16_选品池
 };
 
 export const runtime = "nodejs";

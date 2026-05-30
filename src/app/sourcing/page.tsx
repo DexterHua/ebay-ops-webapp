@@ -60,6 +60,7 @@ export default function SourcingPage() {
   const [budgetMax, setBudgetMax] = useState("");
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<SourcingAIResult | null>(null);
+  const [saving, setSaving] = useState(false);
 
   const runAnalysis = async () => {
     if (!keywords) {
@@ -90,6 +91,38 @@ export default function SourcingPage() {
       toast.error("AI 分析失败", { description: aiResult.error });
     }
     setLoading(false);
+  };
+
+  // 保存到飞书 16_选品池
+  const saveToFeishu = async () => {
+    if (!result) { toast.error("请先运行 AI 分析"); return; }
+    setSaving(true);
+    try {
+      const res = await fetch("/api/lark/save-record", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          table: "sourcing",
+          fields: {
+            品类关键词: `${category || "未分类"} — ${keywords}`,
+            机会评分: result.opportunityScore,
+            预估利润率: result.profitEstimate.profitRate,
+            预估采购价: result.profitEstimate.estimatedCost,
+            建议售价: result.profitEstimate.suggestedPrice,
+            AI分析摘要: result.recommendation,
+            竞品链接: result.competitorReferences.join("\n"),
+            状态: "待评估",
+            生成时间: new Date().toISOString().slice(0, 10).replace(/-/g, "/"),
+          },
+        }),
+      });
+      const json = await res.json();
+      if (json.success) toast.success("已保存到飞书 16_选品池");
+      else toast.error("保存失败", { description: json.error });
+    } catch {
+      toast.error("保存失败，网络错误");
+    }
+    setSaving(false);
   };
 
   return (
@@ -137,9 +170,16 @@ export default function SourcingPage() {
                 />
               </div>
             </div>
-            <Button onClick={runAnalysis} disabled={loading} className="whitespace-nowrap">
-              {loading ? "⏳ 分析中..." : "🔍 AI 分析"}
-            </Button>
+            <div className="flex gap-2">
+              <Button onClick={runAnalysis} disabled={loading} className="whitespace-nowrap">
+                {loading ? "⏳ 分析中..." : "🔍 AI 分析"}
+              </Button>
+              {result && (
+                <Button variant="outline" onClick={saveToFeishu} disabled={saving} className="whitespace-nowrap">
+                  {saving ? "💾 保存中..." : "💾 保存到飞书"}
+                </Button>
+              )}
+            </div>
           </div>
         </CardContent>
       </Card>
