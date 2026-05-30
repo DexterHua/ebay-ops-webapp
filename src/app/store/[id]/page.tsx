@@ -209,7 +209,7 @@ export default function StorePage({ params }: { params: Promise<{ id: string }> 
                   const status = Array.isArray(s.SKU状态) ? s.SKU状态[0] : (s.SKU状态 || "");
                   const margin = s.预估毛利率 ? `${(s.预估毛利率 * 100).toFixed(0)}%` : "--";
                   return (
-                    <tr key={s.SKU} className="border-b border-gray-50 hover:bg-gray-50/50">
+                    <tr key={i} className="border-b border-gray-50 hover:bg-gray-50/50">
                       <td className="py-2 px-2 text-gray-400">{i + 1}</td>
                       <td className="py-2 px-2 font-mono text-gray-900">{s.SKU}</td>
                       <td className="py-2 px-2 text-gray-700">{s.中文品名}</td>
