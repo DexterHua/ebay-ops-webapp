@@ -17,12 +17,21 @@ const EXTRA_DESC: Record<string, string> = {
 
 export default function Home() {
   const [userName, setUserName] = useState("");
+  const [stats, setStats] = useState({ sku: 0, inTransit: 0, value: 0 });
 
   useEffect(() => {
-    fetch("/api/auth/me")
-      .then((r) => r.json())
-      .then((d) => { if (d.name) setUserName(d.name); })
-      .catch(() => {});
+    Promise.all([
+      fetch("/api/auth/me").then((r) => r.json()),
+      fetch("/api/lark?table=sku&limit=200").then((r) => r.json()),
+    ]).then(([me, skus]) => {
+      if (me.name) setUserName(me.name);
+      if (skus.success) {
+        const valid = (skus.data || []).filter((s: Record<string, unknown>) => s.SKU && s["中文品名"]);
+        const transit = valid.reduce((sum: number, s: Record<string, unknown>) => sum + (Number(s["橙联在途"]) || 0), 0);
+        const val = valid.reduce((sum: number, s: Record<string, unknown>) => sum + (Number(s["采购价"]) || 0) * (Number(s["橙联在途"]) || 0), 0);
+        setStats({ sku: valid.length, inTransit: transit, value: val });
+      }
+    }).catch(() => {});
   }, []);
 
   return (
@@ -34,7 +43,10 @@ export default function Home() {
           {userName ? `欢迎回来，${userName}` : <Skeleton className="h-7 w-40 inline-block" />}
         </h1>
         <p className="text-sm text-gray-500 mt-1">
-          NewPower · VelocityGear · TitanRig 运营中 &nbsp;|&nbsp; 56 SKU · 1,295 件在途 · 货值 ¥27,482
+          NewPower · VelocityGear · TitanRig 运营中 &nbsp;|&nbsp;
+          {stats.sku > 0
+            ? `${stats.sku} SKU · ${stats.inTransit.toLocaleString()} 件在途 · 货值 ¥${(stats.value / 10000).toFixed(1)}万`
+            : <Skeleton className="h-4 w-64 inline-block" />}
         </p>
       </div>
 

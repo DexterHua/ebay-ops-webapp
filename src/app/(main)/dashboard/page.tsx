@@ -38,7 +38,7 @@ export default function DashboardPage() {
       fetch("/api/lark?table=issues&limit=200").then(r => r.json()),
       fetch("/api/lark?table=sales&limit=200").then(r => r.json()),
     ]).then(([s, i, sa]) => {
-      if (s.success) setSkus(s.data);
+      if (s.success) setSkus((s.data || []).filter((r: SkuData) => r.SKU && r.中文品名));
       if (i.success) setIssues(i.data);
       if (sa.success) setSales(sa.data);
     }).catch(() => toast.error("数据加载失败"))

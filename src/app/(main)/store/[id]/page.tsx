@@ -33,7 +33,8 @@ export default function StorePage({ params }: { params: Promise<{ id: string }> 
     ]).then(([s, sales, issues]) => {
       if (s.success) {
         const idx = ["NP", "VG", "TR"].indexOf(id);
-        const filtered = (s.data as SkuData[]).filter((_, i) => i % 3 === idx);
+        const valid = (s.data as SkuData[]).filter((r) => r.SKU && r.中文品名);
+        const filtered = valid.filter((_, i) => i % 3 === idx);
         setSkus(filtered);
       } else toast.error("数据加载失败");
     }).catch(() => toast.error("网络错误"))
