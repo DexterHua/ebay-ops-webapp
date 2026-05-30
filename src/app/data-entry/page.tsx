@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,7 +22,7 @@ interface SkuOption { SKU?: string; 中文品名?: string; [key: string]: unknow
 
 export default function DataEntryPage() {
   const [skuList, setSkuList] = useState<SkuOption[]>([]);
-  const [activeTab, setActiveTab] = useState("sales");
+  const [activeTab, setActiveTab] = useState("sku");
 
   useEffect(() => {
     fetch("/api/lark?table=sku&limit=200")
@@ -39,13 +39,17 @@ export default function DataEntryPage() {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid grid-cols-4 w-full">
+        <TabsList className="grid grid-cols-5 w-full">
+          <TabsTrigger value="sku">🏷️ SKU 主数据</TabsTrigger>
           <TabsTrigger value="sales">📊 销售日报</TabsTrigger>
           <TabsTrigger value="stock">📦 库存流水</TabsTrigger>
           <TabsTrigger value="issues">🎫 客服异常</TabsTrigger>
-          <TabsTrigger value="competitors">🔍 竞品监控</TabsTrigger>
+          <TabsTrigger value="competitors">🔍 竞品</TabsTrigger>
         </TabsList>
 
+        <TabsContent value="sku">
+          <SkuForm />
+        </TabsContent>
         <TabsContent value="sales">
           <SalesForm skuList={skuList} today={today} />
         </TabsContent>
@@ -82,6 +86,103 @@ function useSubmit() {
     finally { setSubmitting(false); }
   };
   return { submitting, submit };
+}
+
+// ==============================================================
+//  🏷️ SKU 主数据录入
+// ==============================================================
+function SkuForm() {
+  const { submitting, submit } = useSubmit();
+  const defaultForm = {
+    SKU: "", 中文品名: "", 英文标题关键词: "", OEM: "",
+    类目: "Others", 供应商: "KY", SKU状态: "待清点", 风险标签: "低风险",
+    采购价: "", 建议售价: "", 头程成本件: "", 橙联履约预估件: "",
+    补货周期天数: "30", 安全库存: "", 广告费率: "", eBay费率: "",
+    橙联在途: "0", 本地库存: "0", 橙联可售: "0",
+    商品毛重g: "", 商品尺寸含包装cm: "", 近7日日均销量: "0",
+    负责人: "", 描述: "", 备注: "",
+  };
+  const [form, setForm] = useState(defaultForm);
+
+  const numericFields = ["采购价","建议售价","头程成本件","橙联履约预估件","补货周期天数","安全库存","广告费率","eBay费率","橙联在途","本地库存","橙联可售","商品毛重g","近7日日均销量"];
+
+  const handleSubmit = async () => {
+    if (!form.SKU || !form.中文品名) { toast.error("请至少填写 SKU 和 中文品名"); return; }
+    const payload: Record<string, unknown> = { ...form };
+    numericFields.forEach(k => { payload[k] = parseFloat(form[k as keyof typeof form]) || 0; });
+    const ok = await submit("skuMaster", payload);
+    if (ok) setForm({ ...defaultForm, 橙联在途: "0", 本地库存: "0", 橙联可售: "0", 近7日日均销量: "0", 补货周期天数: "30" });
+  };
+
+  const f = (key: string) => ({ value: form[key as keyof typeof form] as string, onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setForm({...form, [key]: e.target.value}) });
+
+  return <Card>
+    <CardHeader><CardTitle className="text-base">🏷️ SKU 主数据录入</CardTitle><CardDescription>新增商品基础档案，写入 01_SKU主数据。公式字段自动计算无需填写。</CardDescription></CardHeader>
+    <CardContent className="space-y-4">
+      {/* 基本信息 */}
+      <div>
+        <p className="text-xs font-medium text-gray-500 mb-2">📌 基本信息</p>
+        <div className="grid grid-cols-3 gap-3">
+          <div><label className="text-[10px] text-gray-400">SKU *</label><Input {...f("SKU")} placeholder="如 SP843060E010A001" /></div>
+          <div className="col-span-2"><label className="text-[10px] text-gray-400">中文品名 *</label><Input {...f("中文品名")} placeholder="方向游丝" /></div>
+          <div className="col-span-2"><label className="text-[10px] text-gray-400">英文标题关键词</label><Input {...f("英文标题关键词")} placeholder="Steering Wheel Clock Spring" /></div>
+          <div><label className="text-[10px] text-gray-400">类目</label><Select value={form.类目} onValueChange={(v) => setForm({...form, 类目: v || "Others"})}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{["Clock Spring","Carburetor","Others"].map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent></Select></div>
+          <div><label className="text-[10px] text-gray-400">OEM</label><Input {...f("OEM")} placeholder="84306-0E010*1" /></div>
+          <div><label className="text-[10px] text-gray-400">商品毛重(g)</label><Input {...f("商品毛重g")} type="number" /></div>
+          <div><label className="text-[10px] text-gray-400">尺寸(cm)</label><Input {...f("商品尺寸含包装cm")} placeholder="13.2*13.2*9.4" /></div>
+        </div>
+      </div>
+
+      <Separator />
+
+      {/* 成本与定价 */}
+      <div>
+        <p className="text-xs font-medium text-gray-500 mb-2">💰 成本与定价</p>
+        <div className="grid grid-cols-4 gap-3">
+          <div><label className="text-[10px] text-gray-400">采购价(¥)</label><Input {...f("采购价")} type="number" step="0.1" /></div>
+          <div><label className="text-[10px] text-gray-400">建议售价($)</label><Input {...f("建议售价")} type="number" step="0.01" /></div>
+          <div><label className="text-[10px] text-gray-400">头程成本/件(¥)</label><Input {...f("头程成本件")} type="number" step="0.01" /></div>
+          <div><label className="text-[10px] text-gray-400">橙联履约/件($)</label><Input {...f("橙联履约预估件")} type="number" step="0.01" /></div>
+          <div><label className="text-[10px] text-gray-400">广告费率</label><Input {...f("广告费率")} type="number" step="0.01" placeholder="0.08 = 8%" /></div>
+          <div><label className="text-[10px] text-gray-400">eBay费率</label><Input {...f("eBay费率")} type="number" step="0.01" placeholder="默认 13.25" /></div>
+        </div>
+      </div>
+
+      <Separator />
+
+      {/* 库存参数 */}
+      <div>
+        <p className="text-xs font-medium text-gray-500 mb-2">📦 库存参数</p>
+        <div className="grid grid-cols-4 gap-3">
+          <div><label className="text-[10px] text-gray-400">橙联在途</label><Input {...f("橙联在途")} type="number" /></div>
+          <div><label className="text-[10px] text-gray-400">本地库存</label><Input {...f("本地库存")} type="number" /></div>
+          <div><label className="text-[10px] text-gray-400">橙联可售</label><Input {...f("橙联可售")} type="number" /></div>
+          <div><label className="text-[10px] text-gray-400">安全库存</label><Input {...f("安全库存")} type="number" /></div>
+          <div><label className="text-[10px] text-gray-400">补货周期(天)</label><Input {...f("补货周期天数")} type="number" /></div>
+          <div><label className="text-[10px] text-gray-400">近7日日均销量</label><Input {...f("近7日日均销量")} type="number" step="0.1" placeholder="开卖后更新" /></div>
+        </div>
+      </div>
+
+      <Separator />
+
+      {/* 状态与分类 */}
+      <div>
+        <p className="text-xs font-medium text-gray-500 mb-2">🏷️ 状态与分类</p>
+        <div className="grid grid-cols-3 gap-3">
+          <div><label className="text-[10px] text-gray-400">SKU状态</label><Select value={form.SKU状态} onValueChange={(v) => setForm({...form, SKU状态: v || "待清点"})}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><ScrollArea className="max-h-48">{["已上架","橙联在途","待入仓","待清点","待质检","待拍照","待贴标","滞销","停售"].map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}</ScrollArea></SelectContent></Select></div>
+          <div><label className="text-[10px] text-gray-400">供应商</label><Select value={form.供应商} onValueChange={(v) => setForm({...form, 供应商: v || "KY"})}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{["HB","KY","DY","JX","YC","MD"].map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent></Select></div>
+          <div><label className="text-[10px] text-gray-400">风险标签</label><Select value={form.风险标签} onValueChange={(v) => setForm({...form, 风险标签: v || "低风险"})}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{["低风险","带电/认证需复核"].map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent></Select></div>
+          <div><label className="text-[10px] text-gray-400">负责人</label><Input {...f("负责人")} placeholder="刘渊/严娅/车泉" /></div>
+          <div><label className="text-[10px] text-gray-400">描述</label><Input {...f("描述")} placeholder="产品用途/卖点摘要" /></div>
+          <div><label className="text-[10px] text-gray-400">备注</label><Input {...f("备注")} /></div>
+        </div>
+      </div>
+
+      <Button onClick={handleSubmit} disabled={submitting} className="w-full">
+        {submitting ? "⏳ 保存中..." : "💾 保存到飞书 01_SKU主数据"}
+      </Button>
+    </CardContent>
+  </Card>;
 }
 
 // ==============================================================

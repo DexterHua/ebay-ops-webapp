@@ -14,6 +14,7 @@ const EXTRA_PATH = "/Users/chequan/.nvm/versions/node/v24.15.0/bin";
 const BASE_TOKEN = "RveVbcouwa06KcsDXcIc45AInkg";
 
 const TABLE_MAP: Record<string, string> = {
+  skuMaster: "tbl6w66MyySgO75J",    // 01_SKU主数据
   sales: "tbl65ySLOb7YOXN1",        // 07_销售日报
   stockFlow: "tbl7aa7a0MaSsUSr",    // 02_库存流水
   issues: "tbl3cCCTik5VVO7I",       // 08_客服售后异常
