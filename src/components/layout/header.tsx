@@ -1,9 +1,15 @@
 "use client";
 
 import { usePathname } from "next/navigation";
+import Link from "next/link";
 import { MODULES, STORES } from "@/types";
-import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
+
+const STORE_COLORS: Record<string, string> = {
+  NP: "bg-blue-500 hover:bg-blue-600",
+  VG: "bg-amber-500 hover:bg-amber-600",
+  TR: "bg-emerald-500 hover:bg-emerald-600",
+};
 
 export function Header() {
   const pathname = usePathname();
@@ -12,6 +18,7 @@ export function Header() {
   );
 
   const activeStores = STORES.filter((s) => s.active);
+  const activeStoreId = pathname.startsWith("/store/") ? pathname.split("/store/")[1] : null;
 
   return (
     <header className="h-12 border-b border-gray-200 bg-white flex items-center justify-between px-5 sticky top-0 z-10">
@@ -27,20 +34,25 @@ export function Header() {
       </div>
 
       <div className="flex items-center gap-3">
-        {/* 店铺标签 */}
+        {/* 店铺按钮 */}
         <div className="flex items-center gap-1.5">
-          {activeStores.map((store) => (
-            <Badge
-              key={store.id}
-              variant="outline"
-              className={cn(
-                "text-[11px] h-5 px-2 border-gray-200 bg-white text-gray-500",
-                "hover:border-gray-400 hover:text-gray-700 transition-colors"
-              )}
-            >
-              {store.name}
-            </Badge>
-          ))}
+          {activeStores.map((store) => {
+            const isActive = activeStoreId === store.id;
+            return (
+              <Link
+                key={store.id}
+                href={`/store/${store.id}`}
+                className={cn(
+                  "text-[11px] h-5 px-2.5 rounded-full text-white font-medium transition-all cursor-pointer inline-flex items-center",
+                  isActive
+                    ? `${STORE_COLORS[store.id]} ring-1 ring-offset-1 shadow-sm`
+                    : STORE_COLORS[store.id]
+                )}
+              >
+                {store.name}
+              </Link>
+            );
+          })}
         </div>
 
         {/* 用户 */}
