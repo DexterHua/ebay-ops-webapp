@@ -141,4 +141,5 @@ export const MODULES = [
   { id: "listing", name: "🖼️ 详情页生成", path: "/listing", description: "AI生成eBay标题、描述与ItemSpecs" },
   { id: "reviews", name: "📝 评论回复", path: "/reviews", description: "智能生成评价回复草稿" },
   { id: "sourcing", name: "🎯 选品助手", path: "/sourcing", description: "AI驱动的选品分析与评分" },
+  { id: "dataEntry", name: "📋 数据录入", path: "/data-entry", description: "飞书多维表格在线录入" },
 ] as const;
