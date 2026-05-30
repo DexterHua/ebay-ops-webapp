@@ -1,5 +1,9 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import { MODULES } from "@/types";
 
 const EXTRA_DESC: Record<string, string> = {
@@ -12,12 +16,23 @@ const EXTRA_DESC: Record<string, string> = {
 };
 
 export default function Home() {
+  const [userName, setUserName] = useState("");
+
+  useEffect(() => {
+    fetch("/api/auth/me")
+      .then((r) => r.json())
+      .then((d) => { if (d.name) setUserName(d.name); })
+      .catch(() => {});
+  }, []);
+
   return (
     <div className="space-y-5 max-w-4xl">
       {/* 欢迎区 */}
       <div>
         <p className="text-xs text-gray-400 uppercase tracking-wider font-medium">概述</p>
-        <h1 className="text-xl font-bold text-gray-900 mt-1">欢迎回来，车泉</h1>
+        <h1 className="text-xl font-bold text-gray-900 mt-1">
+          {userName ? `欢迎回来，${userName}` : <Skeleton className="h-7 w-40 inline-block" />}
+        </h1>
         <p className="text-sm text-gray-500 mt-1">
           NewPower · VelocityGear · TitanRig 运营中 &nbsp;|&nbsp; 56 SKU · 1,295 件在途 · 货值 ¥27,482
         </p>
