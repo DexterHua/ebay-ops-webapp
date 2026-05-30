@@ -96,22 +96,18 @@ function SkuForm() {
   const defaultForm = {
     SKU: "", 中文品名: "", 英文标题关键词: "", OEM: "",
     类目: "Others", 供应商: "KY", SKU状态: "待清点", 风险标签: "低风险",
-    采购价: "", 建议售价: "", 头程成本件: "", 橙联履约预估件: "",
-    补货周期天数: "30", 安全库存: "", 广告费率: "", eBay费率: "",
-    橙联在途: "0", 本地库存: "0", 橙联可售: "0",
-    商品毛重g: "", 商品尺寸含包装cm: "", 近7日日均销量: "0",
-    负责人: "", 描述: "", 备注: "",
+    商品毛重g: "", 商品尺寸含包装cm: "", 负责人: "", 描述: "", 备注: "",
   };
   const [form, setForm] = useState(defaultForm);
 
-  const numericFields = ["采购价","建议售价","头程成本件","橙联履约预估件","补货周期天数","安全库存","广告费率","eBay费率","橙联在途","本地库存","橙联可售","商品毛重g","近7日日均销量"];
+  const numericFields = ["商品毛重g"];
 
   const handleSubmit = async () => {
     if (!form.SKU || !form.中文品名) { toast.error("请至少填写 SKU 和 中文品名"); return; }
     const payload: Record<string, unknown> = { ...form };
     numericFields.forEach(k => { payload[k] = parseFloat(form[k as keyof typeof form]) || 0; });
-    const ok = await submit("skuMaster", payload);
-    if (ok) setForm({ ...defaultForm, 橙联在途: "0", 本地库存: "0", 橙联可售: "0", 近7日日均销量: "0", 补货周期天数: "30" });
+    await submit("skuMaster", payload);
+    setForm({ ...defaultForm });
   };
 
   const f = (key: string) => ({ value: form[key as keyof typeof form] as string, onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setForm({...form, [key]: e.target.value}) });
@@ -130,36 +126,6 @@ function SkuForm() {
           <div><label className="text-[10px] text-gray-400">OEM</label><Input {...f("OEM")} placeholder="84306-0E010*1" /></div>
           <div><label className="text-[10px] text-gray-400">商品毛重(g)</label><Input {...f("商品毛重g")} type="number" /></div>
           <div><label className="text-[10px] text-gray-400">尺寸(cm)</label><Input {...f("商品尺寸含包装cm")} placeholder="13.2*13.2*9.4" /></div>
-        </div>
-      </div>
-
-      <Separator />
-
-      {/* 成本与定价 */}
-      <div>
-        <p className="text-xs font-medium text-gray-500 mb-2">💰 成本与定价</p>
-        <div className="grid grid-cols-4 gap-3">
-          <div><label className="text-[10px] text-gray-400">采购价(¥)</label><Input {...f("采购价")} type="number" step="0.1" /></div>
-          <div><label className="text-[10px] text-gray-400">建议售价($)</label><Input {...f("建议售价")} type="number" step="0.01" /></div>
-          <div><label className="text-[10px] text-gray-400">头程成本/件(¥)</label><Input {...f("头程成本件")} type="number" step="0.01" /></div>
-          <div><label className="text-[10px] text-gray-400">橙联履约/件($)</label><Input {...f("橙联履约预估件")} type="number" step="0.01" /></div>
-          <div><label className="text-[10px] text-gray-400">广告费率</label><Input {...f("广告费率")} type="number" step="0.01" placeholder="0.08 = 8%" /></div>
-          <div><label className="text-[10px] text-gray-400">eBay费率</label><Input {...f("eBay费率")} type="number" step="0.01" placeholder="默认 13.25" /></div>
-        </div>
-      </div>
-
-      <Separator />
-
-      {/* 库存参数 */}
-      <div>
-        <p className="text-xs font-medium text-gray-500 mb-2">📦 库存参数</p>
-        <div className="grid grid-cols-4 gap-3">
-          <div><label className="text-[10px] text-gray-400">橙联在途</label><Input {...f("橙联在途")} type="number" /></div>
-          <div><label className="text-[10px] text-gray-400">本地库存</label><Input {...f("本地库存")} type="number" /></div>
-          <div><label className="text-[10px] text-gray-400">橙联可售</label><Input {...f("橙联可售")} type="number" /></div>
-          <div><label className="text-[10px] text-gray-400">安全库存</label><Input {...f("安全库存")} type="number" /></div>
-          <div><label className="text-[10px] text-gray-400">补货周期(天)</label><Input {...f("补货周期天数")} type="number" /></div>
-          <div><label className="text-[10px] text-gray-400">近7日日均销量</label><Input {...f("近7日日均销量")} type="number" step="0.1" placeholder="开卖后更新" /></div>
         </div>
       </div>
 
