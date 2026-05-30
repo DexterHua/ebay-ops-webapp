@@ -18,6 +18,7 @@ const TABLE_IDS: Record<string, string> = {
   sales: "tbl65ySLOb7YOXN1",
   issues: "tbl3cCCTik5VVO7I",
   replenish: "tbl1PtyuYfzXe2dt",
+  flow: "tblQxWm3VHIpTXd8",
 };
 
 // 缓存：字段 ID → 字段名
