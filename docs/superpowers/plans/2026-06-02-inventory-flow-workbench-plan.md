@@ -413,7 +413,7 @@ git commit -m "feat: 增加库存异常处理界面"
 ?sku=<SKU>&editMaster=1
 ```
 
-仅在 `editMaster=1` 时预填 SKU 并显示“正在更新 SKU 基础资料”提示。采购批次录入中的既有 SKU 始终默认只读引用，不因采购入库隐式覆盖 `01_SKU主数据`。
+仅在 `editMaster=1` 时预填 SKU 并显示“正在更新 SKU 基础资料”提示。编辑态必须携带已有 `recordId`，锁定 SKU 编码，并让保存路由调用 `updateLarkRecord()`；禁止再次调用新增记录逻辑生成重复 SKU。采购批次录入中的既有 SKU 始终默认只读引用，不因采购入库隐式覆盖 `01_SKU主数据`。
 
 - [ ] **Step 5: 浏览器验证**
 

@@ -266,14 +266,21 @@ export function planDetailTransition(input: {
       movedCreate: undefined,
     };
   }
+  const originalQuantity = input.detail.原始数量 ?? input.detail.当前数量;
   return {
-    sourceUpdate: { ...input.detail, ...common, 当前数量: input.detail.当前数量 - input.quantity },
+    sourceUpdate: {
+      ...input.detail,
+      ...common,
+      原始数量: originalQuantity - input.quantity,
+      当前数量: input.detail.当前数量 - input.quantity,
+    },
     movedCreate: {
       ...input.detail,
       ...common,
       明细编号: input.movedDetailId,
       原始数量: input.quantity,
       当前数量: input.quantity,
+      异常数量: 0,
       当前状态: input.nextState,
     },
   };
@@ -350,12 +357,12 @@ Expected: 返回当前表清单、`02_库存流水` 和 `19_SKU运营汇总` 字
 
 - [ ] **Step 2: 向用户展示外部写入清单并再次确认**
 
-确认范围必须包含：
+确认范围必须拆成两个独立关口。关口 A 只确认结构写入，关口 B 单独确认权限调整。范围包含：
 
 ```text
 新建：20_采购批次、21_头程物流批次、22_SKU批次库存明细、23_库存异常
 扩展：02_库存流水、19_SKU运营汇总
-权限：普通用户对 02、19、20、21、22、23 只读；Editor 对新增表 manage
+权限（单独确认后执行）：普通用户对 02、19、20、21、22、23 只读；Editor 对新增表 manage
 数据：本步骤不写业务记录
 ```
 
@@ -424,7 +431,7 @@ lark-cli base +role-get --base-token "$LARK_BASE_TOKEN" --role-id rolFGYTAGVA --
 Editor：20、21、22、23 -> manage
 ```
 
-`table_rule_map` 的键使用真实 `table_id`。角色写入后立即再次 `+role-get` 校验既有规则仍然存在。
+`table_rule_map` 的键使用真实表名。角色写入后立即再次 `+role-get` 校验既有规则仍然存在。
 
 - [ ] **Step 7: 保存环境变量**
 
@@ -494,12 +501,17 @@ export async function findLarkRecordByText(
   field: string,
   value: string,
 ): Promise<LarkRecord | undefined> {
-  const { records } = await listLarkRecords(table);
-  return records.find((record) => toLarkText(record.fields[field]).trim() === value);
+  const { records, hasMore } = await listLarkRecords(table);
+  if (hasMore) throw new Error(`${table} 读取未完成，不能安全按文本查找`);
+  const matches = records.filter((record) => toLarkText(record.fields[field]).trim() === value);
+  if (matches.length > 1) throw new Error(`${table}.${field} 存在重复值：${value}`);
+  return matches[0];
 }
 ```
 
 - [ ] **Step 3: 扩展汇总位置**
+
+`createLarkRecords()` 与 `updateLarkRecord()` 的写入边界统一调用 `assertLarkWriteEnabled()`，避免新库存路由遗漏写开关。
 
 将 `syncStockSummaryFromFlow()` 的位置映射扩展为：
 
@@ -556,6 +568,7 @@ export interface User {
   password: string;
   createdAt: string;
   role?: UserRole;
+  sessionVersion?: number;
 }
 
 export function getUserRole(user: Pick<User, "name" | "role">): UserRole {
@@ -565,6 +578,7 @@ export function getUserRole(user: Pick<User, "name" | "role">): UserRole {
 ```
 
 `addUser()` 接受可选角色，既有用户没有 `role` 时按 `operator` 兼容。
+密码重置或自行修改密码后递增 `sessionVersion`；既有用户缺少该字段时按 `0` 兼容。
 
 - [ ] **Step 2: 创建服务端会话 helper**
 
@@ -583,11 +597,14 @@ export interface SessionUser {
 export async function requireSession(): Promise<SessionUser> {
   const token = (await cookies()).get("auth_token")?.value;
   if (!token) throw new Error("请先登录");
-  const { payload } = await jwtVerify(token, getJwtSecret());
+  const { payload } = await jwtVerify(token, getJwtSecret(), { algorithms: ["HS256"] });
+  // 回读账号存储：删除账号、改密或降权后，旧 JWT 立即失效。
+  const user = await findStoredUser(String(payload.name || ""));
+  if (!user || getUserSessionVersion(user) !== Number(payload.sessionVersion || 0)) throw new Error("登录状态已失效");
   return {
-    name: String(payload.name || ""),
-    role: (payload.role as UserRole) || (payload.isAdmin ? "admin" : "operator"),
-    isAdmin: Boolean(payload.isAdmin),
+    name: user.name,
+    role: getUserRole(user),
+    isAdmin: getUserRole(user) === "admin",
   };
 }
 
@@ -603,7 +620,7 @@ export async function requireAdmin(): Promise<SessionUser> {
 修改登录路由，使 JWT payload 包含：
 
 ```ts
-{ name: user.name, isAdmin: isAdmin(user.name), role: getUserRole(user) }
+{ name: user.name, isAdmin: isAdmin(user.name), role: getUserRole(user), sessionVersion: getUserSessionVersion(user) }
 ```
 
 - [ ] **Step 4: 更新账号管理页**
@@ -647,6 +664,9 @@ it("从明细重建汇总不会累加旧快照");
 it("期初余额预览不会写入任何记录");
 it("海外仓实收少于预期时创建异常并暂存差额");
 it("绑定物流批次时允许跨采购批次合并");
+it("事务中途失败后使用相同事务号只补齐缺失步骤");
+it("相同事务号但请求摘要不同会拒绝复用");
+it("期初余额部分写入失败后可通过确定性明细编号补齐");
 ```
 
 仓库接口固定为：
@@ -703,12 +723,14 @@ export function previewOpeningBalances(
 `transitionInventory()` 必须按以下顺序执行：
 
 ```text
-1. 如果事务号已有完整流水，直接 rebuild summary 并返回 idempotent=true。
+1. 根据操作类型、用户和请求摘要校验事务号；相同事务号复用到不同请求时拒绝。
 2. 校验每个明细版本号、目标状态和数量。
-3. 对部分推进创建新明细，对整行推进更新原明细。
-4. 使用 流水唯一键 = 事务号 + 明细编号 + 库存位置 + 数量变动 写成对流水。
-5. 当进入海外仓节点且 `actualQuantity < quantity` 时，将差额写入异常数量并创建 `23_库存异常`。
-6. 从全部明细重建汇总，不继续累加旧快照。
+3. 使用事务号和来源明细生成确定性的拆分明细编号、异常编号和流水唯一键。
+4. 按唯一键检查已经完成的步骤；重试时只补齐缺失的明细、流水和异常，不重复创建。
+5. 对部分推进创建新明细，对整行推进更新原明细。
+6. 使用 流水唯一键 = 事务号 + 明细编号 + 库存位置 + 数量变动 写成对流水。
+7. 当进入海外仓节点且 `actualQuantity < quantity` 时，将差额写入异常数量并创建 `23_库存异常`。
+8. 从全部明细重建汇总，不继续累加旧快照。
 ```
 
 `bindShipmentBatch()` 只允许处理 `国内集货仓待发` 明细；整行绑定时更新原明细，部分数量绑定时拆分新明细。新明细和原明细都必须保留来源采购批次号，允许同一物流批次合并多个采购批次。
@@ -860,11 +882,12 @@ exceptions -> inventoryException
 `POST` 仅管理员可调用：
 
 ```text
-1. 如果 22 已存在任何“期初库存导入”记录则拒绝重复执行。
-2. 从 19 生成明细。
-3. 写入 22。
-4. 从 22 重算 19。
-5. 比较迁移前后总量，不一致则返回明确错误。
+1. 从 19 使用确定性编号生成期初明细预期集合。
+2. 回读 22 中已有的“期初库存导入”记录。
+3. 校验已有记录内容；内容不一致则拒绝继续。
+4. 只补齐尚未存在的期初明细。
+5. 从 22 重算 19。
+6. 比较迁移前后总量，不一致则返回明确错误。
 ```
 
 - [ ] **Step 8: 运行验证**

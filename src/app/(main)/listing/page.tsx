@@ -14,9 +14,10 @@ import { callAIStructured } from "@/lib/ai";
 import { LISTING_SYSTEM_PROMPT, buildListingUserMessage } from "@/lib/prompts";
 import { sanitizeHtmlFragment } from "@/lib/sanitize-html";
 import { toast } from "sonner";
+import { FileText } from "lucide-react";
 
 // ============================================================
-// 🖼️ 详情页生成器 v2 — 保存到飞书 + 批量模式 + HTML 预览
+// 详情页生成器 v2 — 保存到飞书 + 批量模式 + HTML 预览
 // ============================================================
 
 interface SkuFromLark {
@@ -28,8 +29,6 @@ interface SkuFromLark {
   OEM?: string;
   采购价?: number;
   建议售价?: number;
-  橙联在途?: number;
-  本地库存?: number;
   "商品毛重（g）"?: number;
   "商品尺寸（含包装）（cm）"?: string;
   SKU状态?: string[] | string;
@@ -302,20 +301,21 @@ export default function ListingPage() {
   // ==============================================================
   function renderSingleMode() {
     return (
-      <div className="space-y-6 max-w-6xl">
-        <div className="flex items-center justify-between">
+      <div className="app-page max-w-6xl">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">🖼️ 详情页生成器</h1>
-            <p className="text-gray-500 mt-1">搜索选择 SKU → 自动填表 → AI 生成 → 保存到飞书</p>
+            <p className="page-kicker">Listing Studio</p>
+            <h1 className="page-title">详情页生成器</h1>
+            <p className="page-description">搜索选择 SKU → 自动填表 → AI 生成 → 保存到飞书</p>
           </div>
           <Button variant="outline" onClick={() => setBatchMode(true)}>
-            📦 切换到批量模式
+            切换到批量模式
           </Button>
         </div>
 
-        <div className="grid grid-cols-5 gap-6">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-5 lg:gap-6">
           {/* 左侧表单 */}
-          <Card className="col-span-2">
+          <Card className="lg:col-span-2">
             <CardHeader className="pb-3">
               <CardTitle className="text-base">产品信息</CardTitle>
               <CardDescription>从飞书选择 SKU 或手动填写</CardDescription>
@@ -327,14 +327,14 @@ export default function ListingPage() {
                   <Skeleton className="h-10 w-full" />
                 ) : selectedSkuMeta ? (
                   <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                    <div className="flex items-center justify-between mb-1.5">
+                    <div className="mb-1.5 flex flex-wrap items-center justify-between gap-1">
                       <Badge variant="default" className="text-xs">{selectedSkuMeta.SKU}</Badge>
                       {statusLabel && <Badge variant="outline" className="text-xs">{statusLabel}</Badge>}
-                      <Button variant="ghost" size="sm" className="h-6 text-xs text-gray-400 hover:text-red-500 ml-auto" onClick={clearSelection}>✕ 清除</Button>
+                      <Button variant="ghost" size="sm" className="h-6 text-xs text-gray-400 hover:text-red-500 ml-auto" onClick={clearSelection}>清除</Button>
                     </div>
                     <p className="text-sm font-medium text-gray-900">{selectedSkuMeta.中文品名}</p>
                     <p className="text-xs text-gray-500 mt-1">
-                      在途 {selectedSkuMeta.橙联在途 || 0}件 · 采购 ¥{selectedSkuMeta.采购价 || "-"}{selectedSkuMeta["商品毛重（g）"] ? ` · ${selectedSkuMeta["商品毛重（g）"]}g` : ""}
+                      采购 ¥{selectedSkuMeta.采购价 || "-"}{selectedSkuMeta["商品毛重（g）"] ? ` · ${selectedSkuMeta["商品毛重（g）"]}g` : ""}
                     </p>
                   </div>
                 ) : (
@@ -354,7 +354,6 @@ export default function ListingPage() {
                               <div className="flex items-center gap-2">
                                 <span className="text-sm font-medium text-gray-900">{item.SKU}</span>
                                 <span className="text-xs text-gray-400 truncate">{item.中文品名}</span>
-                                <Badge variant="outline" className="text-[10px] ml-auto shrink-0">在途{item.橙联在途 || 0}</Badge>
                               </div>
                             </button>
                           ))}
@@ -375,18 +374,18 @@ export default function ListingPage() {
               <Input placeholder="eBay 类目" value={category} onChange={(e) => setCategory(e.target.value)} />
               <Input placeholder="规格（OEM/重量/尺寸）" value={specifications} onChange={(e) => setSpecifications(e.target.value)} />
               <Textarea placeholder="卖点说明 — 产品独特优势、兼容车型" value={features} onChange={(e) => setFeatures(e.target.value)} rows={3} />
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <Input placeholder="采购价 (¥)" type="number" value={purchasePrice} onChange={(e) => setPurchasePrice(e.target.value)} />
                 <Input placeholder="建议售价 ($)" type="number" value={suggestedPrice} onChange={(e) => setSuggestedPrice(e.target.value)} />
               </div>
 
-              <div className="flex gap-2">
+              <div className="flex flex-col gap-2 sm:flex-row">
                 <Button onClick={generateListing} disabled={loading} className="flex-1">
-                  {loading ? "⏳ AI 生成中..." : "🤖 生成详情页"}
+                  {loading ? "AI 生成中..." : "生成详情页"}
                 </Button>
                 {result && (
                   <Button variant="outline" onClick={saveToFeishu} disabled={saving}>
-                    {saving ? "💾 保存中..." : "💾 保存到飞书"}
+                    {saving ? "保存中..." : "保存到飞书"}
                   </Button>
                 )}
               </div>
@@ -394,7 +393,7 @@ export default function ListingPage() {
           </Card>
 
           {/* 右侧结果 */}
-          <Card className="col-span-3">
+          <Card className="lg:col-span-3">
             <CardHeader><CardTitle className="text-base">生成结果</CardTitle></CardHeader>
             <CardContent>
               {loading && (
@@ -407,12 +406,12 @@ export default function ListingPage() {
 
               {result && !loading && (
                 <Tabs defaultValue="titles">
-                  <TabsList className="mb-4">
-                    <TabsTrigger value="titles">📝 标题 ({result.titles.length})</TabsTrigger>
-                    <TabsTrigger value="description">📄 描述 HTML</TabsTrigger>
-                    <TabsTrigger value="preview">👁️ 预览</TabsTrigger>
-                    <TabsTrigger value="specs">🔧 Item Specs</TabsTrigger>
-                    <TabsTrigger value="seo">🔍 SEO</TabsTrigger>
+                  <TabsList className="mb-4 max-w-full justify-start overflow-x-auto">
+                    <TabsTrigger value="titles">标题 ({result.titles.length})</TabsTrigger>
+                    <TabsTrigger value="description">描述 HTML</TabsTrigger>
+                    <TabsTrigger value="preview">预览</TabsTrigger>
+                    <TabsTrigger value="specs">Item Specs</TabsTrigger>
+                    <TabsTrigger value="seo">SEO</TabsTrigger>
                   </TabsList>
 
                   <TabsContent value="titles" className="space-y-3">
@@ -421,10 +420,10 @@ export default function ListingPage() {
                         className={`p-3 rounded-lg border cursor-pointer transition-colors ${selectedTitle === idx ? "border-blue-500 bg-blue-50" : "border-gray-200 hover:border-gray-400"}`}
                         onClick={() => setSelectedTitle(idx)}
                       >
-                        <div className="flex items-center justify-between mb-1">
+                        <div className="mb-1 flex items-center justify-between gap-2">
                           <Badge variant={selectedTitle === idx ? "default" : "outline"} className="text-xs">版本 {idx + 1}</Badge>
                           <span className={`text-xs ${title.length > 80 ? "text-red-500 font-bold" : "text-gray-400"}`}>
-                            {title.length}/80 {title.length > 80 && "⚠️"}
+                            {title.length}/80 {title.length > 80 && ""}
                           </span>
                         </div>
                         <p className="text-sm font-medium text-gray-900">{title}</p>
@@ -444,12 +443,12 @@ export default function ListingPage() {
                         <div dangerouslySetInnerHTML={{ __html: sanitizedPreviewHtml }} />
                       </div>
                     </div>
-                    <p className="text-xs text-gray-400 mt-2 text-center">⚠️ 预览仅供参考，实际效果以 eBay 渲染为准</p>
+                    <p className="text-xs text-gray-400 mt-2 text-center">预览仅供参考，实际效果以 eBay 渲染为准</p>
                   </TabsContent>
 
                   <TabsContent value="specs">
-                    <div className="border rounded-lg overflow-hidden">
-                      <table className="w-full text-sm">
+                    <div className="overflow-x-auto rounded-lg border">
+                      <table className="min-w-[32rem] w-full text-sm">
                         <tbody>
                           {Object.entries(result.itemSpecs).map(([key, value]) => (
                             <tr key={key} className="border-b last:border-b-0">
@@ -472,7 +471,7 @@ export default function ListingPage() {
 
               {!result && !loading && (
                 <div className="py-12 text-center text-gray-400">
-                  <p className="text-4xl mb-3">🤖</p>
+                  <FileText className="mx-auto mb-3 h-8 w-8 text-slate-300" />
                   <p>{skuList.length > 0 ? `已加载 ${skuList.length} 个 SKU，搜索并选择一个开始生成` : "正在加载 SKU..."}</p>
                 </div>
               )}
@@ -488,21 +487,22 @@ export default function ListingPage() {
   // ==============================================================
   function renderBatchMode() {
     return (
-      <div className="space-y-6 max-w-6xl">
-        <div className="flex items-center justify-between">
+      <div className="app-page max-w-6xl">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">🖼️ 批量详情页生成</h1>
-            <p className="text-gray-500 mt-1">多选 SKU → 依次生成 → 结果审阅 → 批量保存到飞书</p>
+            <p className="page-kicker">Listing Studio</p>
+            <h1 className="page-title">批量详情页生成</h1>
+            <p className="page-description">多选 SKU → 依次生成 → 结果审阅 → 批量保存到飞书</p>
           </div>
           <Button variant="outline" onClick={() => { setBatchMode(false); setBatchSkus([]); setBatchResults([]); }}>
-            🔄 切换到单选模式
+            切换到单选模式
           </Button>
         </div>
 
         {/* SKU 选择 + 队列 */}
-        <div className="grid grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:gap-6">
           <Card>
-            <CardHeader><CardTitle className="text-base">📋 选择 SKU</CardTitle></CardHeader>
+            <CardHeader><CardTitle className="text-base">选择 SKU</CardTitle></CardHeader>
             <CardContent>
               <Input
                 placeholder="搜索 SKU 编码或品名..."
@@ -531,19 +531,19 @@ export default function ListingPage() {
           </Card>
 
           <Card>
-            <CardHeader className="flex flex-row items-center justify-between">
+            <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <CardTitle className="text-base">📦 待生成队列 ({batchSkus.length})</CardTitle>
+                <CardTitle className="text-base">待生成队列 ({batchSkus.length})</CardTitle>
                 <CardDescription>{batchSkus.length === 0 ? "尚未添加 SKU" : "点击下方按钮开始批量生成"}</CardDescription>
               </div>
               <div className="flex gap-2">
                 {batchResults.length > 0 && (
                   <Button size="sm" variant="outline" onClick={saveBatchToFeishu} disabled={saving}>
-                    {saving ? "💾..." : "💾 全部保存"}
+                    {saving ? "..." : "全部保存"}
                   </Button>
                 )}
                 <Button size="sm" onClick={generateListing} disabled={batchRunning || batchSkus.length === 0}>
-                  {batchRunning ? `⏳ ${batchProgress.done}/${batchProgress.total}` : `🚀 批量生成 (${batchSkus.length})`}
+                  {batchRunning ? `${batchProgress.done}/${batchProgress.total}` : `批量生成 (${batchSkus.length})`}
                 </Button>
               </div>
             </CardHeader>
@@ -554,13 +554,13 @@ export default function ListingPage() {
                 <ScrollArea className="max-h-64">
                   <div className="space-y-1">
                     {batchSkus.map((item, i) => (
-                      <div key={item.SKU} className="flex items-center justify-between px-3 py-1.5 bg-gray-50 rounded text-sm">
-                        <div className="flex items-center gap-2">
+                      <div key={item.SKU} className="flex items-center justify-between gap-2 rounded bg-gray-50 px-3 py-1.5 text-sm">
+                        <div className="flex min-w-0 items-center gap-2">
                           <span className="text-gray-400 text-xs w-5">{i + 1}.</span>
                           <span className="font-medium text-gray-900">{item.SKU}</span>
-                          <span className="text-gray-500 truncate max-w-[200px]">{item.中文品名}</span>
+                          <span className="max-w-[120px] truncate text-gray-500 sm:max-w-[200px]">{item.中文品名}</span>
                           {batchResults.find((r) => r.sku === item.SKU) && (
-                            <Badge className="text-[10px] bg-green-100 text-green-700 border-0">✓</Badge>
+                            <Badge className="text-[10px] bg-green-100 text-green-700 border-0">完成</Badge>
                           )}
                         </div>
                         <button className="text-xs text-gray-400 hover:text-red-500" onClick={() => removeBatchSku(item)}>移除</button>
@@ -583,14 +583,14 @@ export default function ListingPage() {
                   {batchResults.map((record) => (
                     <Card key={record.sku}>
                       <CardHeader className="pb-2">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2">
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                          <div className="flex min-w-0 flex-wrap items-center gap-2">
                             <Badge variant="default" className="text-xs">{record.sku}</Badge>
                             <span className="text-sm font-medium">{record.productName}</span>
                             {record.saved && <Badge className="text-xs bg-green-100 text-green-700 border-0">已保存</Badge>}
                           </div>
                           {record.result.titles.length > 0 && (
-                            <span className="text-xs text-green-600 font-medium">✅ {record.result.titles[0].length} 字符</span>
+                            <span className="text-xs text-green-600 font-medium">{record.result.titles[0].length} 字符</span>
                           )}
                         </div>
                       </CardHeader>

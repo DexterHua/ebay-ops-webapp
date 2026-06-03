@@ -36,6 +36,7 @@ npm run dev
 - 飞书 Token、表 ID、CLI 路径和 JWT 密钥均通过环境变量注入，不应提交到仓库。
 - `data/users.json` 是本地账号持久化文件。后续部署前应迁移到正式账号存储，并使用专用密码哈希算法。
 - 如果历史提交中曾出现飞书 Token，应在飞书侧轮换 Token。
+- 选品助手已接入 Tavily 实时网页检索。未配置 `TAVILY_API_KEY` 时，只会提示“需要联网数据”，不会生成未经核验的市场份额、近 3 个月销量或政策结论。
 
 ## 环境变量
 
@@ -45,10 +46,14 @@ npm run dev
 | --- | --- |
 | `JWT_SECRET` | JWT 签名密钥，至少 32 位 |
 | `DEEPSEEK_API_KEY` | DeepSeek API Key |
+| `DEEPSEEK_MODEL` | DeepSeek 模型 ID，默认 `deepseek-v4-pro` |
+| `TAVILY_API_KEY` | Tavily Search API Key，仅选品助手实时网页检索使用 |
 | `LARK_BASE_TOKEN` | 飞书多维表格 Token |
 | `LARK_CLI_PATH` | `lark-cli` 可执行文件路径，默认从 `PATH` 查找 |
 | `LARK_WRITE_ENABLED` | 是否允许写入飞书，默认 `false` |
 | `LARK_MAX_READ_RECORDS` | 单次接口最多读取的记录数，默认 `5000` |
+| `LARK_TABLE_STOCK_STRATEGY` | `18_SKU库存策略` 表 ID |
+| `LARK_TABLE_SKU_SUMMARY` | `19_SKU运营汇总` 表 ID，库存与补货看板读取该表 |
 
 ## 验证
 

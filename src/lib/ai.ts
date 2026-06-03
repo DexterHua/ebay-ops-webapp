@@ -5,6 +5,39 @@
 
 import { AIResponse } from "@/types";
 
+/** 修复模型偶尔在 JSON 字符串内部直接输出的换行等控制字符。 */
+function escapeJsonStringControlCharacters(value: string): string {
+  let result = "";
+  let inString = false;
+  let escaped = false;
+
+  for (const char of value) {
+    if (escaped) {
+      result += char;
+      escaped = false;
+      continue;
+    }
+    if (char === "\\") {
+      result += char;
+      escaped = true;
+      continue;
+    }
+    if (char === "\"") {
+      result += char;
+      inString = !inString;
+      continue;
+    }
+    if (inString) {
+      if (char === "\n") { result += "\\n"; continue; }
+      if (char === "\r") { result += "\\r"; continue; }
+      if (char === "\t") { result += "\\t"; continue; }
+    }
+    result += char;
+  }
+
+  return result;
+}
+
 /**
  * 调用 AI API（通过服务端代理）
  */
@@ -13,8 +46,13 @@ export async function callAI(params: {
   userMessage: string;
   maxTokens?: number;
   temperature?: number;
+  researchMode?: "sourcing";
+  researchInput?: {
+    category: string;
+    oemCode: string;
+  };
 }): Promise<AIResponse<string>> {
-  const { systemPrompt, userMessage, maxTokens = 4096, temperature = 0.7 } = params;
+  const { systemPrompt, userMessage, maxTokens = 4096, temperature = 0.7, researchMode, researchInput } = params;
 
   try {
     const response = await fetch("/api/ai", {
@@ -25,8 +63,28 @@ export async function callAI(params: {
         userMessage,
         maxTokens,
         temperature,
+        researchMode,
+        researchInput,
       }),
     });
+
+    if (response.headers.get("X-AI-Stream") === "1") {
+      const data = await response.text();
+      if (!response.ok) return { success: false, error: data || `请求失败 (${response.status})` };
+      return { success: true, data };
+    }
+
+    const contentType = response.headers.get("content-type") || "";
+    if (!contentType.includes("application/json")) {
+      const text = await response.text();
+      const timeout = response.status === 504 || text.includes("Inactivity Timeout");
+      return {
+        success: false,
+        error: timeout
+          ? "选品分析生成超时，请重试。系统已启用流式响应以减少超时。"
+          : `服务返回异常 (${response.status})，请稍后重试`,
+      };
+    }
 
     const result = await response.json();
 
@@ -52,6 +110,11 @@ export async function callAIStructured<T>(params: {
   userMessage: string;
   maxTokens?: number;
   temperature?: number;
+  researchMode?: "sourcing";
+  researchInput?: {
+    category: string;
+    oemCode: string;
+  };
 }): Promise<AIResponse<T>> {
   const result = await callAI({
     ...params,
@@ -65,7 +128,7 @@ export async function callAIStructured<T>(params: {
   try {
     let cleaned = result.data.trim();
     cleaned = cleaned.replace(/^```json\s*/i, "").replace(/\s*```$/i, "");
-    const parsed = JSON.parse(cleaned) as T;
+    const parsed = JSON.parse(escapeJsonStringControlCharacters(cleaned)) as T;
     return { success: true, data: parsed, tokensUsed: result.tokensUsed };
   } catch (error) {
     return { success: false, error: `JSON 解析失败: ${(error as Error).message}`, tokensUsed: result.tokensUsed };

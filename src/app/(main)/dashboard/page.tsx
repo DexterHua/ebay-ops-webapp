@@ -10,20 +10,26 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell,
 } from "recharts";
+import { CircleCheckBig } from "lucide-react";
 
 // ============================================================
-// 📊 运营仪表盘
+// 运营仪表盘
 // ============================================================
 
-const CATEGORY_COLORS = ["#8b5cf6", "#ec4899", "#06b6d4", "#f97316", "#84cc16", "#6366f1"];
+const CATEGORY_COLORS = ["#f59e0b", "#334155", "#64748b", "#10b981", "#0ea5e9", "#a855f7"];
 const STATUS_COLORS: Record<string, string> = {
   "橙联在途": "#3b82f6", "待清点": "#f59e0b", "已上架": "#10b981",
   "待评估": "#6b7280", "停售": "#ef4444",
 };
 
-interface SkuData { SKU?: string; 中文品名?: string; 类目?: string[]; SKU状态?: string[]; 橙联在途?: number; 橙联可售?: number; 本地库存?: number; 总可用库存?: number; 安全库存?: number; 采购价?: number; 预估毛利率?: number; 负责人?: string; [key: string]: unknown; }
+interface SkuData { SKU?: string; 中文品名?: string; 类目?: string[]; SKU状态?: string[]; 橙联在途?: number | string; 橙联可售?: number | string; 本地库存?: number | string; 总可用库存?: number | string; 安全库存?: number | string; 采购价?: number | string; 预估毛利率?: number | string; 负责人?: string; [key: string]: unknown; }
 interface IssueData { 异常类型?: string; 店铺?: string; 状态?: string; 优先级?: string; [key: string]: unknown; }
-interface SalesData { 店铺?: string; SKU?: string; 售出数量?: number; 销售额?: number; 日期?: string; [key: string]: unknown; }
+interface SalesData { 店铺?: string; SKU?: string; 售出数量?: number | string; 销售额?: number | string; 日期?: string; [key: string]: unknown; }
+
+function toNumber(value: unknown): number {
+  const parsed = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
 
 export default function DashboardPage() {
   const [skus, setSkus] = useState<SkuData[]>([]);
@@ -34,10 +40,22 @@ export default function DashboardPage() {
   useEffect(() => {
     Promise.all([
       fetch("/api/lark?table=sku&limit=200").then(r => r.json()),
+      fetch("/api/lark?table=summary&limit=200").then(r => r.json()),
+      fetch("/api/lark?table=strategy&limit=200").then(r => r.json()),
       fetch("/api/lark?table=issues&limit=200").then(r => r.json()),
       fetch("/api/lark?table=sales&limit=200").then(r => r.json()),
-    ]).then(([s, i, sa]) => {
-      if (s.success) setSkus((s.data || []).filter((r: SkuData) => r.SKU && r.中文品名));
+    ]).then(([s, su, st, i, sa]) => {
+      if (s.success && su.success && st.success) {
+        const summaryBySku = new Map((su.data || []).map((row: SkuData) => [row.SKU, row]));
+        const strategyBySku = new Map((st.data || []).map((row: SkuData) => [row.SKU, row]));
+        setSkus((s.data || [])
+          .filter((row: SkuData) => row.SKU && row.中文品名)
+          .map((row: SkuData) => ({
+            ...row,
+            ...(summaryBySku.get(row.SKU) || {}),
+            ...(strategyBySku.get(row.SKU) || {}),
+          })));
+      }
       if (i.success) setIssues(i.data);
       if (sa.success) setSales(sa.data);
     }).catch(() => toast.error("数据加载失败"))
@@ -47,10 +65,10 @@ export default function DashboardPage() {
   // ---- 聚合计算 ----
   const stats = useMemo(() => ({
     total: skus.length,
-    inTransit: skus.reduce((a, s) => a + (s.橙联在途 || 0), 0),
-    available: skus.reduce((a, s) => a + (s.橙联可售 || 0), 0),
-    local: skus.reduce((a, s) => a + (s.本地库存 || 0), 0),
-    totalValue: skus.reduce((a, s) => a + (s.采购价 || 0) * (s.橙联在途 || 0), 0),
+    inTransit: skus.reduce((a, s) => a + toNumber(s.橙联在途), 0),
+    available: skus.reduce((a, s) => a + toNumber(s.橙联可售), 0),
+    local: skus.reduce((a, s) => a + toNumber(s.本地库存), 0),
+    totalValue: skus.reduce((a, s) => a + toNumber(s.采购价) * toNumber(s.橙联在途), 0),
   }), [skus]);
 
   // 分店铺库存（从流程表推算分配：SKU轮流分3店）
@@ -60,9 +78,9 @@ export default function DashboardPage() {
       const items = skus.filter((_, i) => i % 3 === idx);
       return {
         name,
-        在途: items.reduce((a, s) => a + (s.橙联在途 || 0), 0),
-        可售: items.reduce((a, s) => a + (s.橙联可售 || 0), 0),
-        本地: items.reduce((a, s) => a + (s.本地库存 || 0), 0),
+        在途: items.reduce((a, s) => a + toNumber(s.橙联在途), 0),
+        可售: items.reduce((a, s) => a + toNumber(s.橙联可售), 0),
+        本地: items.reduce((a, s) => a + toNumber(s.本地库存), 0),
         SKU数: items.length,
       };
     });
@@ -80,14 +98,14 @@ export default function DashboardPage() {
 
   // 在途TOP10
   const inTransitTop = useMemo(() =>
-    [...skus].sort((a, b) => (b.橙联在途 || 0) - (a.橙联在途 || 0)).slice(0, 10).map(s => ({
-      name: s.SKU || "?", 品名: s.中文品名 || "", value: s.橙联在途 || 0,
+    [...skus].sort((a, b) => toNumber(b.橙联在途) - toNumber(a.橙联在途)).slice(0, 10).map(s => ({
+      name: s.SKU || "?", 品名: s.中文品名 || "", value: toNumber(s.橙联在途),
     })), [skus]);
 
   // 库存预警
   const lowStock = useMemo(() =>
-    skus.filter(s => (s.总可用库存 || 0) > 0 && (s.总可用库存 || 0) <= (s.安全库存 || 30) && (s.总可用库存 || 0) < 50)
-      .sort((a, b) => (a.总可用库存 || 0) - (b.总可用库存 || 0)),
+    skus.filter(s => toNumber(s.安全库存) > 0 && toNumber(s.总可用库存) > 0 && toNumber(s.总可用库存) <= toNumber(s.安全库存) && toNumber(s.总可用库存) < 50)
+      .sort((a, b) => toNumber(a.总可用库存) - toNumber(b.总可用库存)),
     [skus]);
 
   // 状态分布
@@ -110,8 +128,8 @@ export default function DashboardPage() {
       { name: "未定价", min: -1, max: -0.5, count: 0 },
     ];
     skus.forEach(s => {
-      const m = s.预估毛利率;
-      if (m === undefined || m === null || m <= 0) { bins[4].count++; return; }
+      const m = toNumber(s.预估毛利率);
+      if (m <= 0) { bins[4].count++; return; }
       for (let i = 0; i < 4; i++) {
         if (m >= bins[i].min && m < bins[i].max) { bins[i].count++; break; }
       }
@@ -141,10 +159,10 @@ export default function DashboardPage() {
     sales.forEach(s => {
       const st = s.店铺 || "未知";
       if (!byStore[st]) byStore[st] = { revenue: 0, qty: 0 };
-      byStore[st].revenue += s.销售额 || 0;
-      byStore[st].qty += s.售出数量 || 0;
-      totalRev += s.销售额 || 0;
-      totalQty += s.售出数量 || 0;
+      byStore[st].revenue += toNumber(s.销售额);
+      byStore[st].qty += toNumber(s.售出数量);
+      totalRev += toNumber(s.销售额);
+      totalQty += toNumber(s.售出数量);
     });
     return { byStore, totalRev, totalQty };
   }, [sales]);
@@ -152,24 +170,25 @@ export default function DashboardPage() {
   if (loading) return (
     <div className="space-y-4 max-w-7xl">
       <Skeleton className="h-10 w-48" />
-      <div className="grid grid-cols-5 gap-3">{[1,2,3,4,5].map(i=><Skeleton key={i} className="h-24"/>)}</div>
-      <div className="grid grid-cols-2 gap-4">{[1,2,3,4].map(i=><Skeleton key={i} className="h-64"/>)}</div>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">{[1,2,3,4,5].map(i=><Skeleton key={i} className="h-24"/>)}</div>
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">{[1,2,3,4].map(i=><Skeleton key={i} className="h-64"/>)}</div>
     </div>
   );
 
   return (
-    <div className="space-y-5 max-w-7xl">
+    <div className="app-page">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">📊 运营仪表盘</h1>
-          <p className="text-gray-500 mt-1">
+          <p className="page-kicker">Operations Dashboard</p>
+          <h1 className="page-title">运营仪表盘</h1>
+          <p className="page-description">
             实时数据概览 · {skus.length} SKU · 在途 {stats.inTransit} 件 · 货值 ¥{stats.totalValue.toLocaleString()}
           </p>
         </div>
       </div>
 
       {/* ---------- 概览卡片 ---------- */}
-      <div className="grid grid-cols-5 gap-3">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
         <StatCard label="SKU总数" value={stats.total} color="text-blue-600" />
         <StatCard label="橙联在途" value={`${stats.inTransit}件`} color="text-blue-600" />
         <StatCard label="本地库存" value={`${stats.local}件`} color="text-emerald-600" />
@@ -179,7 +198,7 @@ export default function DashboardPage() {
 
       {/* ---------- 店铺库存对比 ---------- */}
       <Card>
-        <CardHeader className="pb-1"><CardTitle className="text-base">📦 各店铺库存分配</CardTitle><CardDescription className="text-xs">按轮流分配规则估算，实际以 05_eBay上架库存分配 为准</CardDescription></CardHeader>
+        <CardHeader className="pb-1"><CardTitle className="text-base">各店铺库存分配</CardTitle><CardDescription className="text-xs">按轮流分配规则估算，实际以 05_eBay上架库存分配 为准</CardDescription></CardHeader>
         <CardContent>
           <ResponsiveContainer width="100%" height={280}>
             <BarChart data={storeInventory} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
@@ -187,12 +206,12 @@ export default function DashboardPage() {
               <XAxis dataKey="name" fontSize={12} />
               <YAxis fontSize={12} />
               <Tooltip />
-              <Bar dataKey="在途" fill="#3b82f6" radius={[3, 3, 0, 0]} />
+              <Bar dataKey="在途" fill="#334155" radius={[3, 3, 0, 0]} />
               <Bar dataKey="可售" fill="#10b981" radius={[3, 3, 0, 0]} />
               <Bar dataKey="本地" fill="#f59e0b" radius={[3, 3, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
-          <div className="grid grid-cols-3 gap-3 mt-3">
+          <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
             {storeInventory.map((s) => (
               <div key={s.name} className="text-center p-2 bg-gray-50 rounded">
                 <p className="text-xs text-gray-500">{s.name}</p>
@@ -205,8 +224,8 @@ export default function DashboardPage() {
       </Card>
 
       {/* ---------- 第二行图：品类分布 + 状态分布 ---------- */}
-      <div className="grid grid-cols-2 gap-4">
-        <ChartCard title="🏷️ 品类分布" subtitle={`${skus.length} SKU，${categoryDist.length} 个品类`}>
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+        <ChartCard title="品类分布" subtitle={`${skus.length} SKU，${categoryDist.length} 个品类`}>
           <ResponsiveContainer width="100%" height={260}>
             <PieChart>
               <Pie data={categoryDist} cx="50%" cy="50%" innerRadius={60} outerRadius={90} dataKey="value" label={({ name, value }) => `${name} ${value}`}>
@@ -217,7 +236,7 @@ export default function DashboardPage() {
           </ResponsiveContainer>
         </ChartCard>
 
-        <ChartCard title="📌 SKU 状态分布" subtitle="当前各SKU所在阶段">
+        <ChartCard title="SKU 状态分布" subtitle="当前各SKU所在阶段">
           <ResponsiveContainer width="100%" height={260}>
             <PieChart>
               <Pie data={statusDist} cx="50%" cy="50%" innerRadius={60} outerRadius={90} dataKey="value" label={({ name, value }) => `${name} ${value}`}>
@@ -230,25 +249,25 @@ export default function DashboardPage() {
       </div>
 
       {/* ---------- 在途 TOP10 + 库存预警 ---------- */}
-      <div className="grid grid-cols-2 gap-4">
-        <ChartCard title="📈 在途库存 TOP10" subtitle="头程在途数量最多的SKU">
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+        <ChartCard title="在途库存 TOP10" subtitle="头程在途数量最多的SKU">
           <ResponsiveContainer width="100%" height={320}>
             <BarChart data={inTransitTop} layout="vertical" margin={{ top: 0, right: 20, left: 60, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
               <XAxis type="number" fontSize={11} />
               <YAxis dataKey="name" type="category" fontSize={10} width={90} tickLine={false} />
               <Tooltip formatter={(v) => [`${v}件`, "在途库存"]} labelFormatter={(l) => { const s = inTransitTop.find(d => d.name === String(l)); return s?.品名 || String(l); }} />
-              <Bar dataKey="value" fill="#6366f1" radius={[0, 3, 3, 0]} />
+              <Bar dataKey="value" fill="#f59e0b" radius={[0, 3, 3, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </ChartCard>
 
         <Card>
-          <CardHeader className="pb-1"><CardTitle className="text-base">⚠️ 库存预警</CardTitle><CardDescription className="text-xs">总可用库存 ≤ 安全库存 且 不足50件</CardDescription></CardHeader>
+          <CardHeader className="pb-1"><CardTitle className="text-base">库存预警</CardTitle><CardDescription className="text-xs">总可用库存 ≤ 安全库存 且 不足50件</CardDescription></CardHeader>
           <CardContent>
             {lowStock.length === 0 ? (
               <div className="py-8 text-center text-sm text-gray-400">
-                <p className="text-3xl mb-2">✅</p>
+                <CircleCheckBig className="mx-auto mb-3 h-7 w-7 text-emerald-500" />
                 <p>{skus.length > 0 ? "所有 SKU 库存充足，无预警项" : "暂无 SKU 数据"}</p>
               </div>
             ) : (
@@ -269,33 +288,33 @@ export default function DashboardPage() {
       </div>
 
       {/* ---------- 利润率分布 ---------- */}
-      <ChartCard title="💰 毛利率分布" subtitle="基于预估售价和成本自动计算">
+      <ChartCard title="毛利率分布" subtitle="基于预估售价和成本自动计算">
         <ResponsiveContainer width="100%" height={220}>
           <BarChart data={marginBins} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
             <XAxis dataKey="name" fontSize={12} />
             <YAxis fontSize={12} />
             <Tooltip />
-            <Bar dataKey="count" fill="#8b5cf6" radius={[3, 3, 0, 0]} name="SKU数" />
+            <Bar dataKey="count" fill="#334155" radius={[3, 3, 0, 0]} name="SKU数" />
           </BarChart>
         </ResponsiveContainer>
       </ChartCard>
 
       {/* ---------- Tabs: 销售 / 售后 / 流程 ---------- */}
       <Tabs defaultValue="sales">
-        <TabsList>
-          <TabsTrigger value="sales">🛒 销售看板</TabsTrigger>
-          <TabsTrigger value="issues">🎫 售后质量</TabsTrigger>
-          <TabsTrigger value="flow">📋 流程追踪</TabsTrigger>
+        <TabsList className="max-w-full justify-start overflow-x-auto">
+          <TabsTrigger value="sales">销售看板</TabsTrigger>
+          <TabsTrigger value="issues">售后质量</TabsTrigger>
+          <TabsTrigger value="flow">流程追踪</TabsTrigger>
         </TabsList>
 
         <TabsContent value="sales" className="mt-4">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
             <Card>
               <CardHeader className="pb-1"><CardTitle className="text-base">分店铺销售额</CardTitle><CardDescription className="text-xs">来源: 07_销售日报</CardDescription></CardHeader>
               <CardContent>
                 {sales.length === 0 ? (
-                  <EmptyPanel text="开卖后将自动展示销售数据" icon="🛒" />
+                  <EmptyPanel text="开卖后将自动展示销售数据" />
                 ) : (
                   <ResponsiveContainer width="100%" height={260}>
                     <BarChart data={Object.entries(salesSummary.byStore).map(([k, v]) => ({ name: k, 销售额: v.revenue, 销量: v.qty }))}>
@@ -314,9 +333,9 @@ export default function DashboardPage() {
               <CardHeader className="pb-1"><CardTitle className="text-base">销售汇总</CardTitle></CardHeader>
               <CardContent className="space-y-4">
                 {sales.length === 0 ? (
-                  <EmptyPanel text="等待第一笔订单" icon="📦" />
+                  <EmptyPanel text="等待第一笔订单" />
                 ) : (
-                  <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                     {["NewPower", "VelocityGear", "TitanRig"].map(st => (
                       <div key={st} className="p-3 bg-gray-50 rounded">
                         <p className="text-xs text-gray-500">{st}</p>
@@ -332,12 +351,12 @@ export default function DashboardPage() {
         </TabsContent>
 
         <TabsContent value="issues" className="mt-4">
-          <div className="grid grid-cols-3 gap-4">
-            <Card className="col-span-2">
+          <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+            <Card className="xl:col-span-2">
               <CardHeader className="pb-1"><CardTitle className="text-base">售后异常分布</CardTitle><CardDescription className="text-xs">来源: 08_客服售后异常 · 共 {issueStats.total} 条记录</CardDescription></CardHeader>
               <CardContent>
                 {issues.length === 0 ? (
-                  <EmptyPanel text="暂无售后异常记录" icon="✅" />
+                  <EmptyPanel text="暂无售后异常记录" />
                 ) : (
                   <ResponsiveContainer width="100%" height={280}>
                     <BarChart data={Object.entries(issueStats.byType).map(([k, v]) => ({ name: k, 数量: v }))}>
@@ -379,7 +398,7 @@ export default function DashboardPage() {
 
         <TabsContent value="flow" className="mt-4">
           <Card>
-            <CardHeader className="pb-1"><CardTitle className="text-base">📋 流程阶段总览</CardTitle><CardDescription className="text-xs">来源: 17_运营流程节点 · 按流程阶段+店铺统计</CardDescription></CardHeader>
+            <CardHeader className="pb-1"><CardTitle className="text-base">流程阶段总览</CardTitle><CardDescription className="text-xs">来源: 17_运营流程节点 · 按流程阶段+店铺统计</CardDescription></CardHeader>
             <CardContent>
               <ResponsiveContainer width="100%" height={300}>
                 <BarChart data={storeInventory} margin={{ top: 10, right: 20, left: 0, bottom: 0 }}>
@@ -390,7 +409,7 @@ export default function DashboardPage() {
                   <Bar dataKey="SKU数" fill="#06b6d4" radius={[3, 3, 0, 0]} name="分配SKU数" />
                 </BarChart>
               </ResponsiveContainer>
-              <div className="mt-4 grid grid-cols-2 gap-3">
+              <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
                 {[
                   { label: "4.头程物流 (海运中)", count: skus.filter(s => { const st = Array.isArray(s.SKU状态)?s.SKU状态[0]:s.SKU状态; return st==="橙联在途"; }).length },
                   { label: "3.质检入库 (待清点)", count: skus.filter(s => { const st = Array.isArray(s.SKU状态)?s.SKU状态[0]:s.SKU状态; return st==="待清点"; }).length },
@@ -435,11 +454,11 @@ function ChartCard({ title, subtitle, children }: { title: string; subtitle?: st
   );
 }
 
-function EmptyPanel({ text, icon }: { text: string; icon: string }) {
+function EmptyPanel({ text }: { text: string }) {
   return (
     <div className="py-12 text-center">
-      <p className="text-4xl mb-2">{icon}</p>
-      <p className="text-sm text-gray-400">{text}</p>
+      <CircleCheckBig className="mx-auto mb-3 h-7 w-7 text-slate-300" />
+      <p className="text-sm text-slate-400">{text}</p>
     </div>
   );
 }

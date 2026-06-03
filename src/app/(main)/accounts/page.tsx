@@ -7,9 +7,61 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 
-interface UserInfo { name: string; createdAt: string; }
+type UserRole = "admin" | "purchaser" | "operator";
+type NewUserRole = Exclude<UserRole, "admin">;
+
+interface UserInfo { name: string; createdAt: string; role: UserRole; }
+
+interface UsersMutationResponse {
+  ok: boolean;
+  error?: string;
+}
+
+const USERS_REQUEST_TIMEOUT_MS = 15_000;
+const ROLE_LABELS: Record<UserRole, string> = {
+  admin: "管理员",
+  purchaser: "采购员",
+  operator: "运营",
+};
+
+const ROLE_BADGE_CLASS_NAMES: Record<UserRole, string> = {
+  admin: "bg-purple-100 text-purple-700",
+  purchaser: "bg-amber-100 text-amber-700",
+  operator: "bg-blue-100 text-blue-700",
+};
+
+async function mutateUsers(body: Record<string, string>): Promise<UsersMutationResponse> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), USERS_REQUEST_TIMEOUT_MS);
+
+  try {
+    const response = await fetch("/api/auth/users", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+    const json = await response.json().catch(() => null) as UsersMutationResponse | null;
+
+    if (!json) throw new Error(`服务器响应异常 (${response.status})`);
+    if (!response.ok || !json.ok) throw new Error(json.error || `请求失败 (${response.status})`);
+    return json;
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new Error("请求超时，请稍后重试");
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : "操作失败，请稍后重试";
+}
 
 export default function AccountsPage() {
   const [users, setUsers] = useState<UserInfo[]>([]);
@@ -20,6 +72,7 @@ export default function AccountsPage() {
   const [showAdd, setShowAdd] = useState(false);
   const [newName, setNewName] = useState("");
   const [newPass, setNewPass] = useState("");
+  const [newRole, setNewRole] = useState<NewUserRole>("operator");
   const [saving, setSaving] = useState(false);
 
   // 重置密码表单
@@ -61,51 +114,63 @@ export default function AccountsPage() {
   const handleAdd = async () => {
     if (!newName.trim() || !newPass.trim()) { toast.error("请填写姓名和密码"); return; }
     setSaving(true);
-    const res = await fetch("/api/auth/users", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "add", name: newName.trim(), password: newPass }),
-    });
-    const json = await res.json();
-    if (json.ok) { toast.success("用户已创建"); setShowAdd(false); setNewName(""); setNewPass(""); refreshUsers(); }
-    else { toast.error(json.error); }
-    setSaving(false);
+    try {
+      await mutateUsers({ action: "add", name: newName.trim(), password: newPass, role: newRole });
+      toast.success("用户已创建");
+      setShowAdd(false);
+      setNewName("");
+      setNewPass("");
+      setNewRole("operator");
+      refreshUsers();
+    } catch (error) {
+      toast.error("创建失败", { description: getErrorMessage(error) });
+    } finally {
+      setSaving(false);
+    }
   };
 
   // 删除用户
   const handleDelete = async () => {
     setSaving(true);
-    const res = await fetch("/api/auth/users", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "delete", name: deleteTarget }),
-    });
-    const json = await res.json();
-    if (json.ok) { toast.success("用户已删除"); setShowDelete(false); setDeleteTarget(""); refreshUsers(); }
-    else { toast.error(json.error); }
-    setSaving(false);
+    try {
+      await mutateUsers({ action: "delete", name: deleteTarget });
+      toast.success("用户已删除");
+      setShowDelete(false);
+      setDeleteTarget("");
+      refreshUsers();
+    } catch (error) {
+      toast.error("删除失败", { description: getErrorMessage(error) });
+    } finally {
+      setSaving(false);
+    }
   };
 
   // 重置密码
   const handleReset = async () => {
     if (!newPassword.trim()) { toast.error("请输入新密码"); return; }
     setSaving(true);
-    const res = await fetch("/api/auth/users", {
-      method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "resetPassword", name: resetTarget, password: newPassword }),
-    });
-    const json = await res.json();
-    if (json.ok) { toast.success(`密码已重置`); setShowReset(false); setResetTarget(""); setNewPassword(""); }
-    else { toast.error(json.error); }
-    setSaving(false);
+    try {
+      await mutateUsers({ action: "resetPassword", name: resetTarget, password: newPassword });
+      toast.success("密码已重置");
+      setShowReset(false);
+      setResetTarget("");
+      setNewPassword("");
+    } catch (error) {
+      toast.error("重置失败", { description: getErrorMessage(error) });
+    } finally {
+      setSaving(false);
+    }
   };
 
   if (!isAdmin) return <div className="py-20 text-center text-gray-400">仅管理员可访问</div>;
 
   return (
-    <div className="space-y-5 max-w-3xl">
-      <div className="flex items-center justify-between">
+    <div className="app-page max-w-3xl">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">👥 账号管理</h1>
-          <p className="text-gray-500 mt-1 text-sm">管理系统登录账号 · 仅管理员可操作</p>
+          <p className="page-kicker">Access Control</p>
+          <h1 className="page-title">账号管理</h1>
+          <p className="page-description">管理系统登录账号 · 仅管理员可操作</p>
         </div>
         <Button onClick={() => setShowAdd(true)}>+ 新增用户</Button>
       </div>
@@ -122,7 +187,7 @@ export default function AccountsPage() {
           ) : (
             <div className="space-y-1">
               {users.map((u) => (
-                <div key={u.name} className="flex items-center justify-between px-3 py-2.5 bg-gray-50 rounded-lg">
+                <div key={u.name} className="flex flex-col gap-3 rounded-lg bg-gray-50 px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex items-center gap-3">
                     <div className="w-8 h-8 rounded-md bg-gray-800 text-white text-xs flex items-center justify-center font-medium">
                       {u.name.slice(0, 1)}
@@ -130,7 +195,7 @@ export default function AccountsPage() {
                     <div>
                       <div className="flex items-center gap-2">
                         <span className="text-sm font-medium text-gray-900">{u.name}</span>
-                        {u.name === "车泉" && <Badge className="text-[10px] bg-purple-100 text-purple-700 border-0">管理员</Badge>}
+                        <Badge className={`border-0 text-[10px] ${ROLE_BADGE_CLASS_NAMES[u.role]}`}>{ROLE_LABELS[u.role]}</Badge>
                       </div>
                       <p className="text-[11px] text-gray-400">创建于 {u.createdAt}</p>
                     </div>
@@ -159,6 +224,17 @@ export default function AccountsPage() {
           <div className="space-y-3 py-3">
             <Input placeholder="姓名" value={newName} onChange={e => setNewName(e.target.value)} />
             <Input placeholder="初始密码" type="password" value={newPass} onChange={e => setNewPass(e.target.value)} />
+            <Select value={newRole} onValueChange={(role) => {
+              if (role === "purchaser" || role === "operator") setNewRole(role);
+            }}>
+              <SelectTrigger className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="purchaser">采购员</SelectItem>
+                <SelectItem value="operator">运营</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowAdd(false)}>取消</Button>

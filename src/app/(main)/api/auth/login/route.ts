@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { SignJWT } from "jose";
 import { cookies } from "next/headers";
-import { verifyUser, isAdmin } from "@/lib/users";
+import { getUserRole, getUserSessionVersion, verifyUser } from "@/lib/users";
 import { getJwtSecret } from "@/lib/auth-config";
 
 export async function POST(request: NextRequest) {
@@ -12,15 +12,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: false, error: "请输入姓名和密码" }, { status: 400 });
     }
 
-    const u = verifyUser(name, password);
+    const u = await verifyUser(name, password);
     if (!u) {
       return NextResponse.json({ ok: false, error: "姓名或密码不正确" }, { status: 401 });
     }
 
-    const admin = isAdmin(name);
+    const role = getUserRole(u);
+    const sessionVersion = getUserSessionVersion(u);
+    const admin = role === "admin";
 
-    // 签发 JWT，含 isAdmin 标记
-    const token = await new SignJWT({ name: u.name, isAdmin: admin })
+    // 签发 JWT，服务端仍会以持久化账号信息为准重新校验。
+    const token = await new SignJWT({ name: u.name, isAdmin: admin, role, sessionVersion })
       .setProtectedHeader({ alg: "HS256" })
       .setIssuedAt()
       .setExpirationTime("7d")
@@ -35,7 +37,7 @@ export async function POST(request: NextRequest) {
       path: "/",
     });
 
-    return NextResponse.json({ ok: true, name: u.name, isAdmin: admin });
+    return NextResponse.json({ ok: true, name: u.name, isAdmin: admin, role });
   } catch {
     return NextResponse.json({ ok: false, error: "服务错误" }, { status: 500 });
   }

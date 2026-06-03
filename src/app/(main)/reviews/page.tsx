@@ -12,9 +12,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { callAIStructured } from "@/lib/ai";
 import { REVIEWS_SYSTEM_PROMPT, buildReviewsUserMessage } from "@/lib/prompts";
 import { toast } from "sonner";
+import { CircleCheckBig, MessageSquareText } from "lucide-react";
 
 // ============================================================
-// 📝 评论回复生成器 v2 — 飞书联动 + 消息推送
+// 评论回复生成器 v2 — 飞书联动 + 消息推送
 // ============================================================
 
 interface IssueFromLark {
@@ -40,12 +41,6 @@ interface ReplyAIResult {
   followupAction: string | null;
   internalNote: string;
 }
-
-const TONE_EMOJI: Record<string, string> = {
-  "感谢": "🙏",
-  "解释": "💬",
-  "道歉补救": "🔧",
-};
 
 const PRIORITY_COLORS: Record<string, string> = {
   "高": "bg-red-100 text-red-700",
@@ -215,23 +210,24 @@ export default function ReviewsPage() {
   };
 
   return (
-    <div className="space-y-4 max-w-7xl">
-      <div className="flex items-center justify-between">
+    <div className="app-page">
+      <div className="flex items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">📝 评论回复生成器</h1>
-          <p className="text-gray-500 mt-1">
+          <p className="page-kicker">Customer Service</p>
+          <h1 className="page-title">评论回复生成器</h1>
+          <p className="page-description">
             从飞书读取待处理售后 → AI 生成回复 → 保存回写
             {pendingIssues.length > 0 && <span className="ml-2 text-orange-500 font-medium">{pendingIssues.length} 条待处理</span>}
           </p>
         </div>
         <Button variant="outline" onClick={refreshIssues} disabled={issuesLoading}>
-          {issuesLoading ? "⏳" : "🔄"} 刷新
+          刷新
         </Button>
       </div>
 
-      <div className="grid grid-cols-12 gap-4">
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-12">
         {/* ====== 左侧：飞书待处理列表 ====== */}
-        <Card className="col-span-3">
+        <Card className="xl:col-span-3">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm flex items-center justify-between">
               飞书待处理
@@ -246,16 +242,16 @@ export default function ReviewsPage() {
               </div>
             ) : pendingIssues.length === 0 ? (
               <div className="p-6 text-center text-sm text-gray-400">
-                <p className="text-2xl mb-2">✅</p>
+                <CircleCheckBig className="mx-auto mb-2 h-6 w-6 text-slate-300" />
                 <p>暂无待处理项</p>
                 <p className="text-xs mt-1">可以手动填写表单生成回复</p>
               </div>
             ) : (
-              <ScrollArea className="max-h-[calc(100vh-260px)]">
+              <ScrollArea className="max-h-72 xl:max-h-[calc(100vh-260px)]">
                 {/* 高优先级 */}
                 {urgentIssues.length > 0 && (
                   <div>
-                    <p className="px-3 py-1.5 text-xs font-medium text-red-500 bg-red-50">⚠️ 高优先级</p>
+                    <p className="px-3 py-1.5 text-xs font-medium text-red-500 bg-red-50">高优先级</p>
                     {urgentIssues.map((issue) => issueCard(issue, true))}
                   </div>
                 )}
@@ -266,7 +262,7 @@ export default function ReviewsPage() {
         </Card>
 
         {/* ====== 中间：输入表单 ====== */}
-        <Card className="col-span-4">
+        <Card className="xl:col-span-4">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm flex items-center justify-between">
               回复草稿
@@ -297,7 +293,7 @@ export default function ReviewsPage() {
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {[5, 4, 3, 2, 1].map((r) => (
-                    <SelectItem key={r} value={String(r)}>{"⭐".repeat(r)} {r}星</SelectItem>
+                    <SelectItem key={r} value={String(r)}>{r} 星</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -328,11 +324,11 @@ export default function ReviewsPage() {
 
             <div className="flex gap-2">
               <Button onClick={generateReply} disabled={loading} className="flex-1">
-                {loading ? "⏳ AI 生成中..." : "💬 生成回复"}
+                {loading ? "AI 生成中..." : "生成回复"}
               </Button>
               {result && selectedIssue && (
                 <Button variant="outline" onClick={saveToFeishu} disabled={saving}>
-                  {saving ? "💾..." : "💾 保存"}
+                  {saving ? "..." : "保存"}
                 </Button>
               )}
             </div>
@@ -340,7 +336,7 @@ export default function ReviewsPage() {
         </Card>
 
         {/* ====== 右侧：AI 回复结果 ====== */}
-        <Card className="col-span-5">
+        <Card className="xl:col-span-5">
           <CardHeader className="pb-2">
             <CardTitle className="text-sm">AI 回复草稿</CardTitle>
           </CardHeader>
@@ -355,11 +351,11 @@ export default function ReviewsPage() {
 
             {result && !loading && (
               <div className="space-y-4">
-                <div className="flex items-center gap-2">
-                  <Badge className={ratingColor(parseInt(rating))}>⭐ {rating} 星</Badge>
-                  <Badge variant="secondary">{TONE_EMOJI[result.tone] || ""} {result.tone}</Badge>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Badge className={ratingColor(parseInt(rating))}>{rating} 星</Badge>
+                  <Badge variant="secondary">{result.tone}</Badge>
                   {selectedIssue?.优先级 === "高" && (
-                    <Badge className="bg-red-100 text-red-700 text-xs">⚠️ 需管理人审核</Badge>
+                    <Badge className="bg-red-100 text-red-700 text-xs">需管理人审核</Badge>
                   )}
                 </div>
 
@@ -373,7 +369,7 @@ export default function ReviewsPage() {
                     <ul className="space-y-1">
                       {result.keyPoints.map((point, i) => (
                         <li key={i} className="text-xs text-gray-600 flex items-start gap-1.5">
-                          <span className="text-green-500">✓</span> {point}
+                          <span className="text-green-500">•</span> {point}
                         </li>
                       ))}
                     </ul>
@@ -382,14 +378,14 @@ export default function ReviewsPage() {
 
                 {result.followupAction && (
                   <div className="bg-blue-50 rounded-lg p-3 border border-blue-100">
-                    <p className="text-xs font-medium text-blue-700 mb-0.5">📋 后续行动</p>
+                    <p className="text-xs font-medium text-blue-700 mb-0.5">后续行动</p>
                     <p className="text-xs text-blue-600">{result.followupAction}</p>
                   </div>
                 )}
 
                 {result.internalNote && (
                   <div className="bg-yellow-50 rounded-lg p-3 border border-yellow-100">
-                    <p className="text-xs font-medium text-yellow-700 mb-0.5">🔒 内部备注</p>
+                    <p className="text-xs font-medium text-yellow-700 mb-0.5">内部备注</p>
                     <p className="text-xs text-yellow-600">{result.internalNote}</p>
                   </div>
                 )}
@@ -398,7 +394,7 @@ export default function ReviewsPage() {
 
             {!result && !loading && (
               <div className="py-12 text-center text-gray-400">
-                <p className="text-3xl mb-2">💬</p>
+                <MessageSquareText className="mx-auto mb-3 h-7 w-7 text-slate-300" />
                 <p className="text-sm">
                   {pendingIssues.length > 0
                     ? "从左侧选择一条待处理项，或手动填写表单后点击生成"
@@ -428,7 +424,6 @@ export default function ReviewsPage() {
           <Badge variant={urgent ? "destructive" : "outline"} className="text-[10px] shrink-0">
             {issue.异常类型}
           </Badge>
-          {issue.优先级 === "高" && <span className="text-[10px]">🔴</span>}
         </div>
         {issue.描述 && (
           <p className="text-xs text-gray-500 truncate">{issue.描述.slice(0, 60)}</p>

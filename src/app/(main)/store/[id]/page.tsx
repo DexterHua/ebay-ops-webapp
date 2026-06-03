@@ -30,11 +30,15 @@ export default function StorePage({ params }: { params: Promise<{ id: string }> 
   useEffect(() => {
     Promise.all([
       fetch("/api/lark?table=sku&limit=200").then(r => r.json()),
+      fetch("/api/lark?table=summary&limit=200").then(r => r.json()),
       fetch("/api/lark?table=sales&limit=500").then(r => r.json()),
-    ]).then(([s, salesResult]) => {
-      if (s.success) {
+    ]).then(([s, summary, salesResult]) => {
+      if (s.success && summary.success) {
         const idx = ["NP", "VG", "TR"].indexOf(id);
-        const valid = (s.data as SkuData[]).filter((r) => r.SKU && r.中文品名);
+        const summaryBySku = new Map((summary.data as SkuData[]).map((row) => [row.SKU, row]));
+        const valid = (s.data as SkuData[])
+          .filter((r) => r.SKU && r.中文品名)
+          .map((row) => ({ ...row, ...(summaryBySku.get(row.SKU) || {}) }));
         const filtered = valid.filter((_, i) => i % 3 === idx);
         setSkus(filtered);
       } else toast.error("数据加载失败");
@@ -120,13 +124,13 @@ export default function StorePage({ params }: { params: Promise<{ id: string }> 
   // SKU 列表（按售价排序）
   const skuList = useMemo(() => [...skus].sort((a, b) => (b.建议售价 || 0) - (a.建议售价 || 0)), [skus]);
 
-  if (loading) return <div className="space-y-4"><Skeleton className="h-8 w-48" /><div className="grid grid-cols-5 gap-3">{[1,2,3,4,5].map(i => <Skeleton key={i} className="h-24" />)}</div><Skeleton className="h-64" /></div>;
+  if (loading) return <div className="space-y-4"><Skeleton className="h-8 w-48" /><div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">{[1,2,3,4,5].map(i => <Skeleton key={i} className="h-24" />)}</div><Skeleton className="h-64" /></div>;
   if (!store) return <div className="text-center py-20 text-gray-400">店铺不存在</div>;
 
   return (
-    <div className="space-y-5 max-w-7xl">
+    <div className="app-page">
       {/* 头部 */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-start justify-between gap-3">
         <div>
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-lg flex items-center justify-center text-white font-bold text-sm" style={{ backgroundColor: color }}>
@@ -138,13 +142,13 @@ export default function StorePage({ params }: { params: Promise<{ id: string }> 
             </div>
           </div>
         </div>
-        <Badge variant="outline" className="text-xs">飞书实时数据</Badge>
+        <Badge variant="outline" className="shrink-0 text-xs">飞书实时数据</Badge>
       </div>
 
       {/* 销售概览卡片 */}
       <div>
         <p className="text-[11px] text-gray-400 uppercase tracking-wider font-medium mb-3">销售概况 {!salesData.hasData && "(开卖后展示真实数据)"}</p>
-        <div className="grid grid-cols-5 gap-3">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
           <StatCard label="SKU 数量" value={skus.length} sub={`已定价 ${priced.length}`} color="text-gray-800" />
           <StatCard label="日均订单" value={salesData.日均订单} sub="开卖后统计" color="text-blue-600" />
           <StatCard label="周 GMV" value={salesData.周GMV} sub="近7天累计" color="text-emerald-600" />
@@ -154,8 +158,8 @@ export default function StorePage({ params }: { params: Promise<{ id: string }> 
       </div>
 
       {/* 定价 & 利润 图表行 */}
-      <div className="grid grid-cols-3 gap-4">
-        <ChartCard title="💲 售价区间分布">
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+        <ChartCard title="售价区间分布">
           {priceRanges.length === 0 ? <Empty text="暂无已定价商品" /> : (
             <ResponsiveContainer width="100%" height={220}>
               <BarChart data={priceRanges}>
@@ -171,7 +175,7 @@ export default function StorePage({ params }: { params: Promise<{ id: string }> 
           )}
         </ChartCard>
 
-        <ChartCard title="💰 毛利率分布">
+        <ChartCard title="毛利率分布">
           <ResponsiveContainer width="100%" height={220}>
             <BarChart data={marginBins}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f5f5f5" />
@@ -183,7 +187,7 @@ export default function StorePage({ params }: { params: Promise<{ id: string }> 
           </ResponsiveContainer>
         </ChartCard>
 
-        <ChartCard title="🏷️ 品类构成">
+        <ChartCard title="品类构成">
           {categoryDist.length === 0 ? <Empty text="暂无数据" /> : (
             <ResponsiveContainer width="100%" height={220}>
               <PieChart>
@@ -198,8 +202,8 @@ export default function StorePage({ params }: { params: Promise<{ id: string }> 
       </div>
 
       {/* 利润排名 + 待定价清单 */}
-      <div className="grid grid-cols-2 gap-4">
-        <ChartCard title="🏆 单品利润 TOP10">
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+        <ChartCard title="单品利润 TOP10">
           {profitRank.length === 0 ? (
             <Empty text="暂无已定价商品，无法计算利润排名" />
           ) : (
@@ -216,16 +220,16 @@ export default function StorePage({ params }: { params: Promise<{ id: string }> 
         </ChartCard>
 
         <Card>
-          <CardHeader className="pb-1"><CardTitle className="text-sm">📋 待定价商品</CardTitle><CardDescription className="text-[11px]">建议售价为空，需要定价后上架</CardDescription></CardHeader>
+          <CardHeader className="pb-1"><CardTitle className="text-sm">待定价商品</CardTitle><CardDescription className="text-[11px]">建议售价为空，需要定价后上架</CardDescription></CardHeader>
           <CardContent>
             {unpriced.length === 0 ? (
-              <div className="py-10 text-center text-sm text-gray-400">✅ 所有商品已定价</div>
+              <div className="py-10 text-center text-sm text-gray-400">所有商品已定价</div>
             ) : (
               <ScrollArea className="max-h-[340px]">
                 <div className="space-y-2">
                   {unpriced.map(s => (
-                    <div key={s.SKU} className="p-2.5 bg-amber-50 rounded-lg border border-amber-100 flex items-center justify-between">
-                      <div>
+                    <div key={s.SKU} className="flex items-center justify-between gap-2 rounded-lg border border-amber-100 bg-amber-50 p-2.5">
+                      <div className="min-w-0">
                         <p className="text-sm font-medium text-gray-900">{s.SKU} <span className="text-xs text-gray-400">{s.中文品名}</span></p>
                         <p className="text-xs text-gray-500">采购价 ¥{s.采购价 || "--"}</p>
                       </div>
@@ -241,9 +245,10 @@ export default function StorePage({ params }: { params: Promise<{ id: string }> 
 
       {/* SKU 商品明细表（定价视角） */}
       <Card>
-        <CardHeader className="pb-1"><CardTitle className="text-sm">📋 商品明细清单</CardTitle><CardDescription className="text-[11px]">按建议售价降序 · 共 {skuList.length} 个 SKU</CardDescription></CardHeader>
+        <CardHeader className="pb-1"><CardTitle className="text-sm">商品明细清单</CardTitle><CardDescription className="text-[11px]">按建议售价降序 · 共 {skuList.length} 个 SKU</CardDescription></CardHeader>
         <CardContent>
-          <ScrollArea className="max-h-[500px]">
+          <div className="overflow-x-auto">
+          <ScrollArea className="max-h-[500px] min-w-[56rem]">
             <table className="w-full text-xs">
               <thead className="sticky top-0 bg-gray-50">
                 <tr className="text-left text-gray-500">
@@ -279,6 +284,7 @@ export default function StorePage({ params }: { params: Promise<{ id: string }> 
               </tbody>
             </table>
           </ScrollArea>
+          </div>
         </CardContent>
       </Card>
     </div>

@@ -16,7 +16,7 @@ function isPublic(pathname: string): boolean {
   return PUBLIC_PATHS.some((p) => p.test(pathname));
 }
 
-export async function proxy(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // 公开路径直接放行

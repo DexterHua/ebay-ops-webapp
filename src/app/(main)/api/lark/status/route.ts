@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getLarkBaseToken, getLarkTableId, runLarkCli } from "@/lib/lark-server";
+import { listLarkRecords } from "@/lib/lark-server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -17,16 +17,8 @@ export async function GET() {
   }
 
   try {
-    const { stdout } = await runLarkCli([
-      "base", "+record-list",
-      "--base-token", getLarkBaseToken(),
-      "--table-id", getLarkTableId("sku"),
-      "--limit", "1",
-      "--format", "json",
-      "--as", "user",
-    ]);
-    const result = JSON.parse(stdout) as { ok?: boolean };
-    cachedStatus = { connected: result.ok === true, checkedAt: Date.now() };
+    await listLarkRecords("sku", 1);
+    cachedStatus = { connected: true, checkedAt: Date.now() };
   } catch {
     cachedStatus = { connected: false, checkedAt: Date.now() };
   }

@@ -3,7 +3,7 @@
 // ============================================================
 
 import { NextRequest, NextResponse } from "next/server";
-import { assertLarkWriteEnabled, runLarkCli } from "@/lib/lark-server";
+import { assertLarkWriteEnabled, sendLarkMarkdownMessage } from "@/lib/lark-server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -27,15 +27,8 @@ export async function POST(request: NextRequest) {
     // 构建消息文本：title + content
     const fullText = title ? `**${title}**\n${content}` : content;
 
-    const { stdout } = await runLarkCli([
-      "im", "+messages-send",
-      "--chat-id", chatId,
-      "--markdown", fullText,
-      "--as", "user",
-    ], { maxBuffer: 5 * 1024 * 1024 });
-
-    const result = JSON.parse(stdout);
-    return NextResponse.json({ success: result.ok ?? true, messageId: result.data?.message_id });
+    const messageId = await sendLarkMarkdownMessage(chatId, fullText);
+    return NextResponse.json({ success: true, messageId });
   } catch (error) {
     return NextResponse.json({ success: false, error: (error as Error).message }, { status: 500 });
   }

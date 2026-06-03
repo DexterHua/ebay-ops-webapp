@@ -10,9 +10,10 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { callAIStructured } from "@/lib/ai";
 import { INVENTORY_SYSTEM_PROMPT, buildInventoryUserMessage } from "@/lib/prompts";
 import { toast } from "sonner";
+import { PackageSearch, Sparkles } from "lucide-react";
 
 // ============================================================
-// 📦 库存监控与智能补货 — 飞书真实数据版
+// 库存监控与智能补货 — 飞书真实数据版
 // ============================================================
 
 // 从飞书读取的原始记录格式
@@ -22,36 +23,68 @@ interface LarkSkuRecord {
   中文品名?: string;
   英文标题关键词?: string;
   类目?: string | string[];
-  采购价?: number;
-  建议售价?: number;
-  "头程成本|件"?: number;
-  橙联可售?: number;
-  橙联在途?: number;
-  本地库存?: number;
-  "日均销量(自动)"?: number;  // ✅ 公式字段：优先销售日报自动汇总，无数据用人工值
-  可售天数?: string;          // ✅ 公式字段：自动计算
-  安全库存?: number;
-  补货点?: number;            // ✅ 公式字段：自动计算
-  补货周期天数?: number;
+  采购价?: unknown;
+  建议售价?: unknown;
+  "头程成本|件"?: unknown;
+  橙联可售?: unknown;
+  橙联在途?: unknown;
+  本地库存?: unknown;
+  近7日日均销量?: unknown;
+  "日均销量(自动)"?: unknown; // 公式字段：优先销售日报自动汇总，无数据用人工值
+  可售天数?: string;          // 公式字段：自动计算
+  安全库存?: unknown;
+  补货点?: unknown;           // 公式字段：自动计算
+  补货周期天数?: unknown;
   SKU状态?: string | string[];
-  补货状态?: string;          // ✅ 公式字段：自动判定
+  补货状态?: string;          // 公式字段：自动判定
   负责人?: string;
   供应商?: string | string[];
-  预估毛利率?: number;        // ✅ 公式字段：自动计算
-  预估毛利?: number;          // ✅ 公式字段：自动计算
-  单件总成本?: number;        // ✅ 公式字段：自动计算
-  总可用库存?: number;        // ✅ 公式字段：自动计算
-  累计销量?: number;          // ✅ lookup：从07_销售日报自动汇总
-  销售记录天数?: number;      // ✅ lookup：从07_销售日报自动计数
+  预估毛利率?: unknown;       // 公式字段：自动计算
+  预估毛利?: unknown;         // 公式字段：自动计算
+  单件总成本?: unknown;       // 公式字段：自动计算
+  总可用库存?: unknown;       // 公式字段：自动计算
+  累计销量?: unknown;         // lookup：从07_销售日报自动汇总
+  销售记录天数?: unknown;     // lookup：从07_销售日报自动计数
   风险标签?: string | string[];
-  广告费率?: number;
-  eBay费率?: number;
-  "橙联履约预估|件"?: number;
+  广告费率?: unknown;
+  eBay费率?: unknown;
+  "橙联履约预估|件"?: unknown;
   OEM?: string;
-  "商品毛重（g）"?: number;
+  "商品毛重（g）"?: unknown;
   "商品尺寸（含包装）（cm）"?: string;
   [key: string]: unknown;
 }
+
+function toLarkNumber(value: unknown): number {
+  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
+
+  if (typeof value === "string") {
+    const normalized = value.trim().replace(/,/g, "");
+    if (!normalized) return 0;
+
+    const isPercentage = normalized.endsWith("%");
+    const parsed = Number(isPercentage ? normalized.slice(0, -1) : normalized);
+    if (!Number.isFinite(parsed)) return 0;
+    return isPercentage ? parsed / 100 : parsed;
+  }
+
+  if (Array.isArray(value)) {
+    return value.reduce((sum, item) => sum + toLarkNumber(item), 0);
+  }
+
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    for (const key of ["value", "text", "number"]) {
+      if (key in record) return toLarkNumber(record[key]);
+    }
+  }
+
+  return 0;
+}
+
+const inventoryCountFormatter = new Intl.NumberFormat("zh-CN", {
+  maximumFractionDigits: 2,
+});
 
 // AI 分析用的精简结构
 interface SkuForAI {
@@ -104,44 +137,60 @@ export default function InventoryPage() {
   const [analysis, setAnalysis] = useState<AIAnalysisResult | null>(null);
   const [savingReplenish, setSavingReplenish] = useState(false);
 
-  // 页面加载时从飞书读取 SKU 数据
+  // 页面加载时组合读取 SKU 静态资料、库存策略与运营汇总。
   const fetchSkus = useCallback(async () => {
     try {
-      const res = await fetch("/api/lark?table=sku&limit=200");
-      const json = await res.json();
-      if (!json.success) {
-        setSkusError(json.error || "读取飞书数据失败");
+      const [skuRes, strategyRes, summaryRes] = await Promise.all([
+        fetch("/api/lark?table=sku&limit=200"),
+        fetch("/api/lark?table=strategy&limit=200"),
+        fetch("/api/lark?table=summary&limit=200"),
+      ]);
+      const [skuJson, strategyJson, summaryJson] = await Promise.all([
+        skuRes.json(),
+        strategyRes.json(),
+        summaryRes.json(),
+      ]);
+      if (!skuJson.success || !strategyJson.success || !summaryJson.success) {
+        setSkusError(skuJson.error || strategyJson.error || summaryJson.error || "读取飞书数据失败");
         return;
       }
 
-      // 转换为 AI 分析的输入格式（优先使用公式自动计算值）
-      const converted = (json.data as LarkSkuRecord[])
+      const strategyBySku = new Map(
+        (strategyJson.data as LarkSkuRecord[]).map((row) => [row.SKU, row]),
+      );
+      const summaryBySku = new Map(
+        (summaryJson.data as LarkSkuRecord[]).map((row) => [row.SKU, row]),
+      );
+      const converted = (skuJson.data as LarkSkuRecord[])
         .filter((r) => r.SKU && r.中文品名) // 至少要有 SKU 和品名
         .map((r) => {
-          const dailySales = r["日均销量(自动)"] || 0;
-          const hasSalesData = (r.累计销量 || 0) > 0;
+          const strategy = strategyBySku.get(r.SKU);
+          const summary = summaryBySku.get(r.SKU);
+          const dailySales = toLarkNumber(summary?.近7日日均销量);
+          const totalSales = toLarkNumber(summary?.累计销量);
+          const hasSalesData = totalSales > 0;
           return {
             sku: r.SKU || "",
             productName: r.中文品名 || "",
-            available: r.橙联可售 || 0,
-            inTransit: r.橙联在途 || 0,
-            local: r.本地库存 || 0,
+            available: toLarkNumber(summary?.橙联可售),
+            inTransit: toLarkNumber(summary?.橙联在途),
+            local: toLarkNumber(summary?.本地库存),
             dailySales,
             salesTrend: hasSalesData ? "已有销售数据" : dailySales > 0 ? "人工估算" : "尚无销售数据",
-            replenishCycle: r.补货周期天数 || 30,
-            profitMargin: r.预估毛利率 || 0,
-            safetyStock: r.安全库存 || 0,
-            cost: r.采购价 || 0,
+            replenishCycle: toLarkNumber(strategy?.补货周期天数) || 30,
+            profitMargin: toLarkNumber(r.预估毛利率),
+            safetyStock: toLarkNumber(strategy?.安全库存),
+            cost: toLarkNumber(r.采购价),
             category: Array.isArray(r.类目) ? r.类目[0] : (r.类目 || "未分类"),
             status: Array.isArray(r.SKU状态) ? r.SKU状态[0] : (r.SKU状态 || "未知"),
-            totalSales: r.累计销量 || 0,
+            totalSales,
             autoDailySales: dailySales,
           };
         });
 
       setSkus(converted);
       toast.success(`已加载 ${converted.length} 个 SKU`, {
-        description: `数据来源：飞书多维表格 01_SKU主数据`,
+        description: "数据来源：01_SKU主数据 + 18_SKU库存策略 + 19_SKU运营汇总",
       });
     } catch {
       setSkusError("网络请求失败");
@@ -246,10 +295,10 @@ export default function InventoryPage() {
 
   const getPriorityLabel = (priority: string) => {
     switch (priority) {
-      case "urgent": return "🔴 紧急";
-      case "this_week": return "🟡 本周";
-      case "this_month": return "🟢 本月";
-      default: return "⚪ 正常";
+      case "urgent": return "紧急";
+      case "this_week": return "本周";
+      case "this_month": return "本月";
+      default: return "正常";
     }
   };
 
@@ -264,21 +313,22 @@ export default function InventoryPage() {
   const totalAvailable = skus.reduce((sum, s) => sum + s.available, 0);
 
   return (
-    <div className="space-y-6 max-w-6xl">
+    <div className="app-page max-w-6xl">
       {/* 页面标题 */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">📦 库存监控与智能补货</h1>
-          <p className="text-gray-500 mt-1">
+          <p className="page-kicker">Inventory Intelligence</p>
+          <h1 className="page-title">库存监控与智能补货</h1>
+          <p className="page-description">
             实时读取飞书多维表格 · AI预测断货时间 · 智能补货建议
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
           <Button variant="outline" onClick={refreshSkus} disabled={skusLoading}>
-            {skusLoading ? "⏳ 加载中..." : "🔄 刷新数据"}
+            {skusLoading ? "加载中..." : "刷新数据"}
           </Button>
           <Button onClick={runAnalysis} disabled={analyzing || skus.length === 0} size="lg">
-            {analyzing ? "⏳ AI 分析中..." : "🚀 运行 AI 补货分析"}
+            {analyzing ? "AI 分析中..." : "运行 AI 补货分析"}
           </Button>
           {analysis && analysis.analysis.length > 0 && (
             <Button
@@ -286,7 +336,7 @@ export default function InventoryPage() {
               onClick={saveReplenishToFeishu}
               disabled={savingReplenish}
             >
-              {savingReplenish ? "⏳ 保存中..." : "💾 保存补货建议到飞书"}
+              {savingReplenish ? "保存中..." : "保存补货建议到飞书"}
             </Button>
           )}
         </div>
@@ -307,7 +357,7 @@ export default function InventoryPage() {
 
       {/* 数据概览卡片 */}
       {!skusLoading && skus.length > 0 && (
-        <div className="grid grid-cols-6 gap-3">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
           <Card>
             <CardContent className="p-3 text-center">
               <p className="text-xs text-gray-400">总 SKU</p>
@@ -317,24 +367,33 @@ export default function InventoryPage() {
           <Card>
             <CardContent className="p-3 text-center">
               <p className="text-xs text-gray-400">橙联可售</p>
-              <p className="text-2xl font-bold text-green-600">{totalAvailable}</p>
+              <p className="text-2xl font-bold text-green-600">
+                {inventoryCountFormatter.format(totalAvailable)}
+                <span className="ml-1 text-xs font-normal text-gray-400">件</span>
+              </p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-3 text-center">
               <p className="text-xs text-gray-400">橙联在途</p>
-              <p className="text-2xl font-bold text-blue-600">{totalInTransit}</p>
+              <p className="text-2xl font-bold text-blue-600">
+                {inventoryCountFormatter.format(totalInTransit)}
+                <span className="ml-1 text-xs font-normal text-gray-400">件</span>
+              </p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-3 text-center">
               <p className="text-xs text-gray-400">本地库存</p>
-              <p className="text-2xl font-bold text-orange-600">{totalLocal}</p>
+              <p className="text-2xl font-bold text-orange-600">
+                {inventoryCountFormatter.format(totalLocal)}
+                <span className="ml-1 text-xs font-normal text-gray-400">件</span>
+              </p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-3 text-center">
-              <p className="text-xs text-gray-400">橙联在途</p>
+              <p className="text-xs text-gray-400">在途 SKU</p>
               <p className="text-2xl font-bold text-blue-600">
                 {statusCounts["橙联在途"] || 0}
                 <span className="text-xs font-normal text-gray-400 ml-1">个SKU</span>
@@ -343,7 +402,7 @@ export default function InventoryPage() {
           </Card>
           <Card>
             <CardContent className="p-3 text-center">
-              <p className="text-xs text-gray-400">待清点</p>
+              <p className="text-xs text-gray-400">待清点 SKU</p>
               <p className="text-2xl font-bold text-yellow-600">
                 {statusCounts["待清点"] || 0}
                 <span className="text-xs font-normal text-gray-400 ml-1">个SKU</span>
@@ -355,7 +414,7 @@ export default function InventoryPage() {
 
       {/* 加载骨架 */}
       {skusLoading && (
-        <div className="grid grid-cols-6 gap-3">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
           {[1, 2, 3, 4, 5, 6].map((i) => (
             <Card key={i}>
               <CardContent className="p-3">
@@ -369,22 +428,22 @@ export default function InventoryPage() {
 
       {/* AI 分析摘要 */}
       {analysis && (
-        <div className="grid grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <Card>
             <CardContent className="p-4">
-              <p className="text-sm text-gray-500">🔴 紧急补货</p>
+              <p className="text-sm text-gray-500">紧急补货</p>
               <p className="text-3xl font-bold text-red-600">{analysis.summary.urgentCount}</p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-4">
-              <p className="text-sm text-gray-500">🟡 需关注</p>
+              <p className="text-sm text-gray-500">需关注</p>
               <p className="text-3xl font-bold text-yellow-600">{analysis.summary.warningCount}</p>
             </CardContent>
           </Card>
           <Card>
             <CardContent className="p-4">
-              <p className="text-sm text-gray-500">🟢 库存正常</p>
+              <p className="text-sm text-gray-500">库存正常</p>
               <p className="text-3xl font-bold text-green-600">{analysis.summary.normalCount}</p>
             </CardContent>
           </Card>
@@ -423,7 +482,7 @@ export default function InventoryPage() {
               .map((item) => (
                 <Card key={item.sku} className={item.priority === "urgent" ? "border-red-300 bg-red-50/30" : ""}>
                   <CardHeader className="pb-2">
-                    <div className="flex items-center justify-between">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                       <div>
                         <CardTitle className="text-base flex items-center gap-2">
                           {item.productName}
@@ -437,7 +496,7 @@ export default function InventoryPage() {
                     </div>
                   </CardHeader>
                   <CardContent>
-                    <div className="grid grid-cols-6 gap-4 mb-3">
+                    <div className="mb-3 grid grid-cols-2 gap-4 sm:grid-cols-3 xl:grid-cols-6">
                       <div>
                         <p className="text-xs text-gray-400">橙联可售</p>
                         <p className="text-lg font-bold text-gray-900">{item.currentStock.available}</p>
@@ -472,7 +531,7 @@ export default function InventoryPage() {
                     </div>
                     {item.riskNote && (
                       <div className="mt-2 flex items-start gap-2">
-                        <span className="text-xs font-medium text-red-500 whitespace-nowrap mt-0.5">⚠️ 风险：</span>
+                        <span className="text-xs font-medium text-red-500 whitespace-nowrap mt-0.5">风险：</span>
                         <p className="text-sm text-red-600">{item.riskNote}</p>
                       </div>
                     )}
@@ -487,12 +546,12 @@ export default function InventoryPage() {
       {!analysis && !analyzing && !skusLoading && skus.length === 0 && (
         <Card className="border-dashed">
           <CardContent className="py-16 text-center">
-            <p className="text-5xl mb-4">📦</p>
+            <PackageSearch className="mx-auto mb-4 h-9 w-9 text-slate-300" />
             <p className="text-gray-500 text-lg mb-2">尚未加载 SKU 数据</p>
             <p className="text-gray-400 text-sm mb-4">
               请先在飞书多维表格的「01_SKU主数据」中录入商品信息
             </p>
-            <Button onClick={refreshSkus}>🔄 重新加载</Button>
+            <Button onClick={refreshSkus}>重新加载</Button>
           </CardContent>
         </Card>
       )}
@@ -500,10 +559,10 @@ export default function InventoryPage() {
       {!analysis && !analyzing && !skusLoading && skus.length > 0 && (
         <Card className="border-dashed">
           <CardContent className="py-12 text-center">
-            <p className="text-5xl mb-4">🤖</p>
+            <Sparkles className="mx-auto mb-4 h-9 w-9 text-orange-400" />
             <p className="text-gray-500 text-lg mb-2">
               已加载 <span className="font-bold text-gray-900">{skus.length}</span> 个 SKU，共{" "}
-              <span className="font-bold text-blue-600">{totalInTransit}</span> 件在途
+              <span className="font-bold text-blue-600">{inventoryCountFormatter.format(totalInTransit)}</span> 件在途
             </p>
             <p className="text-gray-400 text-sm">
               点击「运行 AI 补货分析」，AI 将从飞书实时数据出发，<br />

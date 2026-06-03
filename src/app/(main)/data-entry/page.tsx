@@ -11,7 +11,7 @@ import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
 
 // ============================================================
-// 📋 数据录入 — 四大高频表单
+// 数据录入 — 四大高频表单
 // ============================================================
 
 const STORES = ["NewPower", "VelocityGear", "TitanRig", "Nexusmoto"];
@@ -30,19 +30,20 @@ export default function DataEntryPage() {
   const today = new Date().toISOString().slice(0, 10).replace(/-/g, "/");
 
   return (
-    <div className="space-y-4 max-w-4xl">
+    <div className="app-page max-w-4xl">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900">📋 数据录入</h1>
-        <p className="text-gray-500 mt-1">飞书多维表格数据在线录入，无需切换到飞书界面</p>
+        <p className="page-kicker">Data Workspace</p>
+        <h1 className="page-title">数据录入</h1>
+        <p className="page-description">飞书多维表格数据在线录入，无需切换到飞书界面</p>
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid grid-cols-5 w-full">
-          <TabsTrigger value="sku">🏷️ SKU 主数据</TabsTrigger>
-          <TabsTrigger value="sales">📊 销售日报</TabsTrigger>
-          <TabsTrigger value="stock">📦 库存流水</TabsTrigger>
-          <TabsTrigger value="issues">🎫 客服异常</TabsTrigger>
-          <TabsTrigger value="competitors">🔍 竞品</TabsTrigger>
+        <TabsList className="flex w-full justify-start overflow-x-auto">
+          <TabsTrigger value="sku">SKU 主数据</TabsTrigger>
+          <TabsTrigger value="sales">销售日报</TabsTrigger>
+          <TabsTrigger value="stock">库存流水</TabsTrigger>
+          <TabsTrigger value="issues">客服异常</TabsTrigger>
+          <TabsTrigger value="competitors">竞品</TabsTrigger>
         </TabsList>
 
         <TabsContent value="sku">
@@ -78,7 +79,11 @@ function useSubmit() {
         body: JSON.stringify({ table, fields }),
       });
       const json = await res.json();
-      if (json.success) { toast.success(`已保存到飞书`); return true; }
+      if (json.success) {
+        if (json.warning) toast.warning("记录已保存，但汇总需要检查", { description: json.warning });
+        else toast.success("已保存到飞书");
+        return true;
+      }
       else { toast.error("保存失败", { description: json.error }); return false; }
     } catch { toast.error("网络错误"); return false; }
     finally { setSubmitting(false); }
@@ -87,7 +92,7 @@ function useSubmit() {
 }
 
 // ==============================================================
-//  🏷️ SKU 主数据录入
+//  SKU 主数据录入
 // ==============================================================
 function SkuForm() {
   const { submitting, submit } = useSubmit();
@@ -111,15 +116,15 @@ function SkuForm() {
   const f = (key: string) => ({ value: form[key as keyof typeof form] as string, onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setForm({...form, [key]: e.target.value}) });
 
   return <Card>
-    <CardHeader><CardTitle className="text-base">🏷️ SKU 主数据录入</CardTitle><CardDescription>新增商品基础档案，写入 01_SKU主数据。公式字段自动计算无需填写。</CardDescription></CardHeader>
+    <CardHeader><CardTitle className="text-base">SKU 主数据录入</CardTitle><CardDescription>新增商品基础档案，写入 01_SKU主数据。公式字段自动计算无需填写。</CardDescription></CardHeader>
     <CardContent className="space-y-4">
       {/* 基本信息 */}
       <div>
-        <p className="text-xs font-medium text-gray-500 mb-2">📌 基本信息</p>
-        <div className="grid grid-cols-3 gap-3">
+        <p className="text-xs font-medium text-gray-500 mb-2">基本信息</p>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <div><label className="text-[10px] text-gray-400">SKU *</label><Input {...f("SKU")} placeholder="如 SP843060E010A001" /></div>
-          <div className="col-span-2"><label className="text-[10px] text-gray-400">中文品名 *</label><Input {...f("中文品名")} placeholder="方向游丝" /></div>
-          <div className="col-span-2"><label className="text-[10px] text-gray-400">英文标题关键词</label><Input {...f("英文标题关键词")} placeholder="Steering Wheel Clock Spring" /></div>
+          <div className="sm:col-span-2"><label className="text-[10px] text-gray-400">中文品名 *</label><Input {...f("中文品名")} placeholder="方向游丝" /></div>
+          <div className="sm:col-span-2"><label className="text-[10px] text-gray-400">英文标题关键词</label><Input {...f("英文标题关键词")} placeholder="Steering Wheel Clock Spring" /></div>
           <div><label className="text-[10px] text-gray-400">类目</label><Select value={form.类目} onValueChange={(v) => setForm({...form, 类目: v || "Others"})}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{["Clock Spring","Carburetor","Others"].map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent></Select></div>
           <div><label className="text-[10px] text-gray-400">OEM</label><Input {...f("OEM")} placeholder="84306-0E010*1" /></div>
           <div><label className="text-[10px] text-gray-400">商品毛重(g)</label><Input {...f("商品毛重（g）")} type="number" /></div>
@@ -131,8 +136,8 @@ function SkuForm() {
 
       {/* 状态与分类 */}
       <div>
-        <p className="text-xs font-medium text-gray-500 mb-2">🏷️ 状态与分类</p>
-        <div className="grid grid-cols-3 gap-3">
+        <p className="text-xs font-medium text-gray-500 mb-2">状态与分类</p>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <div><label className="text-[10px] text-gray-400">SKU状态</label><Select value={form.SKU状态} onValueChange={(v) => setForm({...form, SKU状态: v || "待清点"})}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><ScrollArea className="max-h-48">{["已上架","橙联在途","待入仓","待清点","待质检","待拍照","待贴标","滞销","停售"].map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}</ScrollArea></SelectContent></Select></div>
           <div><label className="text-[10px] text-gray-400">供应商</label><Select value={form.供应商} onValueChange={(v) => setForm({...form, 供应商: v || "KY"})}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{["HB","KY","DY","JX","YC","MD"].map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent></Select></div>
           <div><label className="text-[10px] text-gray-400">风险标签</label><Select value={form.风险标签} onValueChange={(v) => setForm({...form, 风险标签: v || "低风险"})}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{["低风险","带电/认证需复核"].map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent></Select></div>
@@ -143,14 +148,14 @@ function SkuForm() {
       </div>
 
       <Button onClick={handleSubmit} disabled={submitting} className="w-full">
-        {submitting ? "⏳ 保存中..." : "💾 保存到飞书 01_SKU主数据"}
+        {submitting ? "保存中..." : "保存到飞书 01_SKU主数据"}
       </Button>
     </CardContent>
   </Card>;
 }
 
 // ==============================================================
-//  📊 销售日报
+//  销售日报
 // ==============================================================
 function SalesForm({ skuList, today }: { skuList: SkuOption[]; today: string }) {
   const { submitting, submit } = useSubmit();
@@ -184,8 +189,8 @@ function SalesForm({ skuList, today }: { skuList: SkuOption[]; today: string }) 
   };
 
   return <Card>
-    <CardHeader><CardTitle className="text-base">📊 每日销售数据录入</CardTitle><CardDescription>每卖出一单记录一次，写入 07_销售日报</CardDescription></CardHeader>
-    <CardContent className="grid grid-cols-2 gap-3">
+    <CardHeader><CardTitle className="text-base">每日销售数据录入</CardTitle><CardDescription>每卖出一单记录一次，写入 07_销售日报</CardDescription></CardHeader>
+    <CardContent className="grid grid-cols-1 gap-3 sm:grid-cols-2">
       <div className="relative">
         <label className="text-xs text-gray-400">SKU *</label>
         <Input
@@ -221,14 +226,14 @@ function SalesForm({ skuList, today }: { skuList: SkuOption[]; today: string }) 
       <div><label className="text-xs text-gray-400">广告费 ($)</label><Input type="number" step="0.01" value={form.广告费} onChange={e => setForm({...form, 广告费: e.target.value})} /></div>
       <div><label className="text-xs text-gray-400">橙联履约费 ($)</label><Input type="number" step="0.01" value={form.橙联履约费} onChange={e => setForm({...form, 橙联履约费: e.target.value})} /></div>
       <div><label className="text-xs text-gray-400">退款金额 ($)</label><Input type="number" step="0.01" value={form.退款金额} onChange={e => setForm({...form, 退款金额: e.target.value})} /></div>
-      <div className="col-span-2"><label className="text-xs text-gray-400">备注</label><Input value={form.备注} onChange={e => setForm({...form, 备注: e.target.value})} /></div>
-      <div className="col-span-2"><Button onClick={handleSubmit} disabled={submitting} className="w-full">{submitting ? "⏳ 保存中..." : "💾 保存到飞书"}</Button></div>
+      <div className="sm:col-span-2"><label className="text-xs text-gray-400">备注</label><Input value={form.备注} onChange={e => setForm({...form, 备注: e.target.value})} /></div>
+      <div className="sm:col-span-2"><Button onClick={handleSubmit} disabled={submitting} className="w-full">{submitting ? "保存中..." : "保存到飞书"}</Button></div>
     </CardContent>
   </Card>;
 }
 
 // ==============================================================
-//  📦 库存流水
+//  库存流水
 // ==============================================================
 function StockForm({ skuList, today }: { skuList: SkuOption[]; today: string }) {
   const { submitting, submit } = useSubmit();
@@ -256,9 +261,9 @@ function StockForm({ skuList, today }: { skuList: SkuOption[]; today: string }) 
   };
 
   return <Card>
-    <CardHeader><CardTitle className="text-base">📦 库存变动记录</CardTitle><CardDescription>每次库存变动记一笔，写入 02_库存流水</CardDescription></CardHeader>
-    <CardContent className="grid grid-cols-2 gap-3">
-      <div className="relative col-span-2"><label className="text-xs text-gray-400">SKU *</label>
+    <CardHeader><CardTitle className="text-base">库存变动记录</CardTitle><CardDescription>每次库存变动记一笔，写入 02_库存流水</CardDescription></CardHeader>
+    <CardContent className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+      <div className="relative sm:col-span-2"><label className="text-xs text-gray-400">SKU *</label>
         <Input
           placeholder="输入 SKU 编码或品名…"
           value={skuQuery}
@@ -292,14 +297,14 @@ function StockForm({ skuList, today }: { skuList: SkuOption[]; today: string }) 
       <div><label className="text-xs text-gray-400">日期</label><Input value={form.日期} onChange={e => setForm({...form, 日期: e.target.value})} /></div>
       <div><label className="text-xs text-gray-400">相关单号</label><Input value={form.相关单号} onChange={e => setForm({...form, 相关单号: e.target.value})} placeholder="采购单/物流号/订单号" /></div>
       <div><label className="text-xs text-gray-400">操作人</label><Input value={form.操作人} onChange={e => setForm({...form, 操作人: e.target.value})} /></div>
-      <div className="col-span-2"><label className="text-xs text-gray-400">备注</label><Input value={form.备注} onChange={e => setForm({...form, 备注: e.target.value})} /></div>
-      <div className="col-span-2"><Button onClick={handleSubmit} disabled={submitting} className="w-full">{submitting ? "⏳ 保存中..." : "💾 保存到飞书"}</Button></div>
+      <div className="sm:col-span-2"><label className="text-xs text-gray-400">备注</label><Input value={form.备注} onChange={e => setForm({...form, 备注: e.target.value})} /></div>
+      <div className="sm:col-span-2"><Button onClick={handleSubmit} disabled={submitting} className="w-full">{submitting ? "保存中..." : "保存到飞书"}</Button></div>
     </CardContent>
   </Card>;
 }
 
 // ==============================================================
-//  🎫 客服异常
+//  客服异常
 // ==============================================================
 function IssuesForm({ skuList, today }: { skuList: SkuOption[]; today: string }) {
   const { submitting, submit } = useSubmit();
@@ -325,8 +330,8 @@ function IssuesForm({ skuList, today }: { skuList: SkuOption[]; today: string })
   };
 
   return <Card>
-    <CardHeader><CardTitle className="text-base">🎫 客服售后记录</CardTitle><CardDescription>收到买家消息/评价/纠纷时录入，写入 08_客服售后异常</CardDescription></CardHeader>
-    <CardContent className="grid grid-cols-2 gap-3">
+    <CardHeader><CardTitle className="text-base">客服售后记录</CardTitle><CardDescription>收到买家消息/评价/纠纷时录入，写入 08_客服售后异常</CardDescription></CardHeader>
+    <CardContent className="grid grid-cols-1 gap-3 sm:grid-cols-2">
       <div className="relative"><label className="text-xs text-gray-400">SKU *</label>
         <Input
           placeholder="输入 SKU 编码或品名…"
@@ -358,19 +363,19 @@ function IssuesForm({ skuList, today }: { skuList: SkuOption[]; today: string })
       <div><label className="text-xs text-gray-400">订单号</label><Input value={form.订单号} onChange={e => setForm({...form, 订单号: e.target.value})} /></div>
       <div><label className="text-xs text-gray-400">店铺</label><Select value={form.店铺} onValueChange={(v) => setForm({...form, 店铺: v || "NewPower"})}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{STORES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent></Select></div>
       <div><label className="text-xs text-gray-400">异常类型 *</label><Select value={form.异常类型} onValueChange={(v) => setForm({...form,异常类型: v || "买家消息"})}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{ISSUE_TYPES.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent></Select></div>
-      <div><label className="text-xs text-gray-400">优先级</label><Select value={form.优先级} onValueChange={(v) => setForm({...form,优先级: v || "中"})}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{["高","中","低"].map(p => <SelectItem key={p} value={p}>{p === "高" ? "🔴 " : p === "中" ? "🟡 " : "🟢 "}{p}</SelectItem>)}</SelectContent></Select></div>
+      <div><label className="text-xs text-gray-400">优先级</label><Select value={form.优先级} onValueChange={(v) => setForm({...form,优先级: v || "中"})}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{["高","中","低"].map(p => <SelectItem key={p} value={p}>{p === "高" ? "" : p === "中" ? "" : ""}{p}</SelectItem>)}</SelectContent></Select></div>
       <div><label className="text-xs text-gray-400">状态</label><Select value={form.状态} onValueChange={(v) => setForm({...form,状态: v || "待办"})}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{["待办","进行中","已完成","延期"].map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent></Select></div>
       <div><label className="text-xs text-gray-400">责任人</label><Input value={form.责任人} onChange={e => setForm({...form, 责任人: e.target.value})} /></div>
       <div><label className="text-xs text-gray-400">创建日期</label><Input value={form.创建日期} onChange={e => setForm({...form, 创建日期: e.target.value})} /></div>
-      <div className="col-span-2"><label className="text-xs text-gray-400">问题描述</label><Input value={form.描述} onChange={e => setForm({...form, 描述: e.target.value})} placeholder="买家说了什么 / 发生了什么问题" /></div>
-      <div className="col-span-2"><label className="text-xs text-gray-400">备注</label><Input value={form.备注} onChange={e => setForm({...form, 备注: e.target.value})} /></div>
-      <div className="col-span-2"><Button onClick={handleSubmit} disabled={submitting} className="w-full">{submitting ? "⏳ 保存中..." : "💾 保存到飞书"}</Button></div>
+      <div className="sm:col-span-2"><label className="text-xs text-gray-400">问题描述</label><Input value={form.描述} onChange={e => setForm({...form, 描述: e.target.value})} placeholder="买家说了什么 / 发生了什么问题" /></div>
+      <div className="sm:col-span-2"><label className="text-xs text-gray-400">备注</label><Input value={form.备注} onChange={e => setForm({...form, 备注: e.target.value})} /></div>
+      <div className="sm:col-span-2"><Button onClick={handleSubmit} disabled={submitting} className="w-full">{submitting ? "保存中..." : "保存到飞书"}</Button></div>
     </CardContent>
   </Card>;
 }
 
 // ==============================================================
-//  🔍 竞品监控
+//  竞品监控
 // ==============================================================
 function CompetitorForm({ skuList, today }: { skuList: SkuOption[]; today: string }) {
   const { submitting, submit } = useSubmit();
@@ -406,8 +411,8 @@ function CompetitorForm({ skuList, today }: { skuList: SkuOption[]; today: strin
   };
 
   return <Card>
-    <CardHeader><CardTitle className="text-base">🔍 竞品价格监控</CardTitle><CardDescription>记录竞品价格变动，写入 09_竞品价格监控</CardDescription></CardHeader>
-    <CardContent className="grid grid-cols-2 gap-3">
+    <CardHeader><CardTitle className="text-base">竞品价格监控</CardTitle><CardDescription>记录竞品价格变动，写入 09_竞品价格监控</CardDescription></CardHeader>
+    <CardContent className="grid grid-cols-1 gap-3 sm:grid-cols-2">
       <div className="relative"><label className="text-xs text-gray-400">SKU *</label>
         <Input
           placeholder="输入 SKU 编码或品名…"
@@ -437,7 +442,7 @@ function CompetitorForm({ skuList, today }: { skuList: SkuOption[]; today: strin
         )}
       </div>
       <div><label className="text-xs text-gray-400">搜索关键词</label><Input value={form.关键词} onChange={e => setForm({...form, 关键词: e.target.value})} /></div>
-      <div className="col-span-2"><label className="text-xs text-gray-400">竞品链接</label><Input value={form.竞品链接} onChange={e => setForm({...form, 竞品链接: e.target.value})} placeholder="https://www.ebay.com/itm/..." /></div>
+      <div className="sm:col-span-2"><label className="text-xs text-gray-400">竞品链接</label><Input value={form.竞品链接} onChange={e => setForm({...form, 竞品链接: e.target.value})} placeholder="https://www.ebay.com/itm/..." /></div>
       <div><label className="text-xs text-gray-400">竞品售价 ($) *</label><Input type="number" step="0.01" value={form.竞品售价} onChange={e => { setForm({...form, 竞品售价: e.target.value}); }} onBlur={calcDiff} /></div>
       <div><label className="text-xs text-gray-400">竞品运费 ($)</label><Input type="number" step="0.01" value={form.竞品运费} onChange={e => { setForm({...form, 竞品运费: e.target.value}); }} onBlur={calcDiff} /></div>
       <div><label className="text-xs text-gray-400">我方售价 ($)</label><Input type="number" step="0.01" value={form.我方售价} onChange={e => { setForm({...form, 我方售价: e.target.value}); }} onBlur={calcDiff} /></div>
@@ -446,8 +451,8 @@ function CompetitorForm({ skuList, today }: { skuList: SkuOption[]; today: strin
       <div><label className="text-xs text-gray-400">动作建议</label><Input value={form.动作建议} onChange={e => setForm({...form, 动作建议: e.target.value})} placeholder="跟价/观望/降价" /></div>
       <div><label className="text-xs text-gray-400">负责人</label><Input value={form.负责人} onChange={e => setForm({...form, 负责人: e.target.value})} /></div>
       <div><label className="text-xs text-gray-400">记录日期</label><Input value={form.记录日期} onChange={e => setForm({...form, 记录日期: e.target.value})} /></div>
-      <div className="col-span-2"><label className="text-xs text-gray-400">备注</label><Input value={form.备注} onChange={e => setForm({...form, 备注: e.target.value})} /></div>
-      <div className="col-span-2"><Button onClick={handleSubmit} disabled={submitting} className="w-full">{submitting ? "⏳ 保存中..." : "💾 保存到飞书"}</Button></div>
+      <div className="sm:col-span-2"><label className="text-xs text-gray-400">备注</label><Input value={form.备注} onChange={e => setForm({...form, 备注: e.target.value})} /></div>
+      <div className="sm:col-span-2"><Button onClick={handleSubmit} disabled={submitting} className="w-full">{submitting ? "保存中..." : "保存到飞书"}</Button></div>
     </CardContent>
   </Card>;
 }

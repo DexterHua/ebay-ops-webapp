@@ -1,0 +1,22 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "main": ".open-next/worker.js",
+  "name": "ebay-ops-webapp",
+  "compatibility_date": "2026-05-31",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  },
+  "kv_namespaces": [
+    {
+      "binding": "USERS_KV",
+      "id": "7e25d7ecdcf14e0ab3a938c7c177acfd"
+    }
+  ],
+  "vars": {
+    "DEEPSEEK_MODEL": "deepseek-v4-pro",
+    "LARK_WRITE_ENABLED": "true",
+    "LARK_MAX_READ_RECORDS": "5000"
+  }
+}
