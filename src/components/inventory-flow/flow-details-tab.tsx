@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ArrowRight, Loader2, RefreshCw } from "lucide-react";
+import { ArrowRight, Loader2, RefreshCw, Split } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -33,11 +33,24 @@ function isDone(value: unknown) {
   return value === true || value === "true" || value === "是";
 }
 
+/** 明细是否为拆分后留置在原地的（原始数量 > 当前数量，表示已有部分被推进走） */
+function isLeftover(detail: FlowDetailRecord): boolean {
+  const original = toNumber(detail.原始数量);
+  const current = toNumber(detail.当前数量);
+  return original > 0 && current > 0 && original > current;
+}
+
+/** 明细编号是否表明它是拆分/绑定产物 */
+function isSplitChild(detailId: string): boolean {
+  return detailId.includes("-MOVE-") || detailId.includes("-BIND-");
+}
+
 export function FlowDetailsTab() {
   const [details, setDetails] = useState<FlowDetailRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [transitionOpen, setTransitionOpen] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [showLeftoverOnly, setShowLeftoverOnly] = useState(false);
   const [filters, setFilters] = useState({
     state: "",
     purchaseBatchNo: "",
@@ -74,16 +87,21 @@ export function FlowDetailsTab() {
       const purchaseBatch = toText(detail.来源采购批次);
       const shipmentBatch = toText(detail.当前物流批次);
       const sku = toText(detail.SKU).toUpperCase();
-      return (!filters.state || state.includes(filters.state))
-        && (!filters.purchaseBatchNo || purchaseBatch.includes(filters.purchaseBatchNo))
-        && (!filters.shipmentBatchNo || shipmentBatch.includes(filters.shipmentBatchNo))
-        && (!filters.sku || sku.includes(filters.sku.toUpperCase()));
+      const matchesState = !filters.state || state.includes(filters.state);
+      const matchesPurchase = !filters.purchaseBatchNo || purchaseBatch.includes(filters.purchaseBatchNo);
+      const matchesShipment = !filters.shipmentBatchNo || shipmentBatch.includes(filters.shipmentBatchNo);
+      const matchesSku = !filters.sku || sku.includes(filters.sku.toUpperCase());
+      const matchesLeftover = !showLeftoverOnly || isLeftover(detail);
+      return matchesState && matchesPurchase && matchesShipment && matchesSku && matchesLeftover;
     });
-  }, [details, filters]);
+  }, [details, filters, showLeftoverOnly]);
 
   const selectedDetails = filteredDetails.filter((detail) => selectedIds.has(detail.recordId));
   const selectedQuantity = selectedDetails.reduce((sum, detail) => sum + toNumber(detail.当前数量), 0);
   const selectedSkuCount = new Set(selectedDetails.map((detail) => toText(detail.SKU)).filter(Boolean)).size;
+
+  // 当前可见的留置库存统计
+  const leftoverCount = details.filter((d) => !isDone(d.是否完成) && isLeftover(d)).length;
 
   const toggleOne = (recordId: string, checked: boolean) => {
     setSelectedIds((current) => {
@@ -104,12 +122,25 @@ export function FlowDetailsTab() {
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div>
             <CardTitle className="text-base">批次流转</CardTitle>
-            <CardDescription>筛选明细、多选并准备批量推进</CardDescription>
+            <CardDescription>筛选明细、多选并批量推进。可逐行修改数量留置部分库存等待合并发货。</CardDescription>
           </div>
-          <Button variant="outline" size="sm" onClick={loadDetails} disabled={loading}>
-            {loading ? <Loader2 className="animate-spin" /> : <RefreshCw />}
-            刷新明细
-          </Button>
+          <div className="flex items-center gap-2">
+            {leftoverCount > 0 && (
+              <Button
+                variant={showLeftoverOnly ? "default" : "outline"}
+                size="sm"
+                onClick={() => setShowLeftoverOnly((v) => !v)}
+                className={showLeftoverOnly ? "bg-orange-500 hover:bg-orange-600" : ""}
+              >
+                <Split className="size-3.5" />
+                留置 {leftoverCount}
+              </Button>
+            )}
+            <Button variant="outline" size="sm" onClick={loadDetails} disabled={loading}>
+              {loading ? <Loader2 className="animate-spin" /> : <RefreshCw />}
+              刷新明细
+            </Button>
+          </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -136,7 +167,9 @@ export function FlowDetailsTab() {
           {loading ? (
             <div className="p-8 text-center text-sm text-slate-500">正在读取库存明细...</div>
           ) : filteredDetails.length === 0 ? (
-            <div className="p-8 text-center text-sm text-slate-500">暂无待推进明细</div>
+            <div className="p-8 text-center text-sm text-slate-500">
+              {showLeftoverOnly ? "暂无留置库存" : "暂无待推进明细"}
+            </div>
           ) : (
             <div className="divide-y divide-slate-100">
               {filteredDetails.map((detail) => {
@@ -144,23 +177,47 @@ export function FlowDetailsTab() {
                 const purchaseBatch = toText(detail.来源采购批次);
                 const shipmentBatch = toText(detail.当前物流批次);
                 const state = toText(detail.当前状态);
+                const currentQty = toNumber(detail.当前数量);
+                const originalQty = toNumber(detail.原始数量);
                 const checked = selectedIds.has(detail.recordId);
+                const detailId = toText(detail.明细编号);
+                const leftOver = isLeftover(detail);
+                const splitChild = isSplitChild(detailId);
+
                 return (
                   <label key={detail.recordId} className="grid cursor-pointer grid-cols-[2.5rem_1fr] gap-3 px-3 py-3 hover:bg-orange-50/40 md:grid-cols-[2.5rem_1.1fr_1fr_1fr_6rem] md:items-center">
                     <Checkbox checked={checked} onChange={(event) => toggleOne(detail.recordId, event.currentTarget.checked)} />
                     <div>
-                      <p className="text-sm font-medium text-slate-900">{sku || "未命名 SKU"}</p>
-                      <p className="truncate text-xs text-slate-500">{toText(detail.中文品名快照) || toText(detail.明细编号)}</p>
+                      <div className="flex items-center gap-1.5">
+                        <p className="text-sm font-medium text-slate-900">{sku || "未命名 SKU"}</p>
+                        {leftOver && (
+                          <Badge className="gap-1 border-orange-200 bg-orange-50 text-orange-700 text-[10px]">
+                            <Split className="size-2.5" />
+                            留置
+                          </Badge>
+                        )}
+                        {splitChild && !leftOver && (
+                          <Badge className="border-blue-200 bg-blue-50 text-blue-700 text-[10px]">
+                            拆分
+                          </Badge>
+                        )}
+                      </div>
+                      <p className="truncate text-xs text-slate-500">{toText(detail.中文品名快照) || detailId}</p>
                     </div>
                     <div className="text-xs text-slate-500 max-md:col-start-2">
                       <p>{purchaseBatch || "未绑定采购批次"}</p>
-                      <p>{shipmentBatch || "未绑定物流批次"}</p>
+                      {shipmentBatch && <p>{shipmentBatch}</p>}
                     </div>
                     <div className="max-md:col-start-2">
                       <Badge variant="outline">{state || "未知状态"}</Badge>
                     </div>
-                    <div className="text-right text-sm font-semibold text-slate-900 max-md:col-start-2 max-md:text-left">
-                      {toNumber(detail.当前数量)}
+                    <div className="text-right max-md:col-start-2 max-md:text-left">
+                      <p className="text-sm font-semibold text-slate-900">{currentQty}</p>
+                      {leftOver && (
+                        <p className="text-[10px] text-slate-400">
+                          原始 {originalQty}，{originalQty - currentQty} 已移出
+                        </p>
+                      )}
                     </div>
                   </label>
                 );

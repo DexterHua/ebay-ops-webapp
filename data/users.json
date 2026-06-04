@@ -1,8 +1,9 @@
 [
   {
     "name": "车泉",
-    "password": "60324edfd0ab7d55bcd8b9aeca61919d1d93fbe0b6ccca2c822c561a2e2af25e",
-    "createdAt": "2026-05-30"
+    "password": "27562fd5b178ed6e5acbb5e582f385374d6e9cdbe21cb42c6ee0d3baf02687d4",
+    "createdAt": "2026-05-30",
+    "sessionVersion": 1
   },
   {
     "name": "刘渊",

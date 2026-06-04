@@ -22,7 +22,7 @@ const STATUS_COLORS: Record<string, string> = {
   "待评估": "#6b7280", "停售": "#ef4444",
 };
 
-interface SkuData { SKU?: string; 中文品名?: string; 类目?: string[]; SKU状态?: string[]; 橙联在途?: number | string; 橙联可售?: number | string; 本地库存?: number | string; 总可用库存?: number | string; 安全库存?: number | string; 采购价?: number | string; 预估毛利率?: number | string; 负责人?: string; [key: string]: unknown; }
+interface SkuData { SKU?: string; 中文品名?: string; 类目?: string[]; SKU状态?: string[]; 橙联在途?: number | string; 橙联可售?: number | string; 本地库存?: number | string; 国内集货仓?: number | string; 总可用库存?: number | string; 账面总量?: number | string; 安全库存?: number | string; 采购价?: number | string; 预估毛利率?: number | string; 负责人?: string; [key: string]: unknown; }
 interface IssueData { 异常类型?: string; 店铺?: string; 状态?: string; 优先级?: string; [key: string]: unknown; }
 interface SalesData { 店铺?: string; SKU?: string; 售出数量?: number | string; 销售额?: number | string; 日期?: string; [key: string]: unknown; }
 
@@ -65,10 +65,14 @@ export default function DashboardPage() {
   // ---- 聚合计算 ----
   const stats = useMemo(() => ({
     total: skus.length,
+    local: skus.reduce((a, s) => a + toNumber(s.本地库存), 0),
+    domesticHub: skus.reduce((a, s) => a + toNumber(s.国内集货仓), 0),
     inTransit: skus.reduce((a, s) => a + toNumber(s.橙联在途), 0),
     available: skus.reduce((a, s) => a + toNumber(s.橙联可售), 0),
-    local: skus.reduce((a, s) => a + toNumber(s.本地库存), 0),
-    totalValue: skus.reduce((a, s) => a + toNumber(s.采购价) * toNumber(s.橙联在途), 0),
+    // 总货值 = 全部库存 × 采购价（本地 + 集货仓 + 在途 + 可售）
+    totalAllValue: skus.reduce((a, s) => a + toNumber(s.采购价) * (toNumber(s.本地库存) + toNumber(s.国内集货仓) + toNumber(s.橙联在途) + toNumber(s.橙联可售)), 0),
+    // 移动货值 = 已离开本地仓的库存价值
+    totalBookValue: skus.reduce((a, s) => a + toNumber(s.采购价) * (toNumber(s.国内集货仓) + toNumber(s.橙联在途) + toNumber(s.橙联可售)), 0),
   }), [skus]);
 
   // 分店铺库存（从流程表推算分配：SKU轮流分3店）
@@ -80,6 +84,7 @@ export default function DashboardPage() {
         name,
         在途: items.reduce((a, s) => a + toNumber(s.橙联在途), 0),
         可售: items.reduce((a, s) => a + toNumber(s.橙联可售), 0),
+        国内集货仓: items.reduce((a, s) => a + toNumber(s.国内集货仓), 0),
         本地: items.reduce((a, s) => a + toNumber(s.本地库存), 0),
         SKU数: items.length,
       };
@@ -101,6 +106,15 @@ export default function DashboardPage() {
     [...skus].sort((a, b) => toNumber(b.橙联在途) - toNumber(a.橙联在途)).slice(0, 10).map(s => ({
       name: s.SKU || "?", 品名: s.中文品名 || "", value: toNumber(s.橙联在途),
     })), [skus]);
+
+  // 国内集货仓TOP10
+  const domesticHubTop = useMemo(() =>
+    [...skus]
+      .filter(s => toNumber(s.国内集货仓) > 0)
+      .sort((a, b) => toNumber(b.国内集货仓) - toNumber(a.国内集货仓))
+      .slice(0, 10).map(s => ({
+        name: s.SKU || "?", 品名: s.中文品名 || "", value: toNumber(s.国内集货仓),
+      })), [skus]);
 
   // 库存预警
   const lowStock = useMemo(() =>
@@ -182,18 +196,19 @@ export default function DashboardPage() {
           <p className="page-kicker">Operations Dashboard</p>
           <h1 className="page-title">运营仪表盘</h1>
           <p className="page-description">
-            实时数据概览 · {skus.length} SKU · 在途 {stats.inTransit} 件 · 货值 ¥{stats.totalValue.toLocaleString()}
+            实时数据概览 · {skus.length} SKU · 总库存 {stats.inTransit + stats.domesticHub + stats.local + stats.available} 件 · 总货值 ¥{(stats.totalAllValue / 10000).toFixed(1)}万
           </p>
         </div>
       </div>
 
       {/* ---------- 概览卡片 ---------- */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6">
         <StatCard label="SKU总数" value={stats.total} color="text-blue-600" />
-        <StatCard label="橙联在途" value={`${stats.inTransit}件`} color="text-blue-600" />
         <StatCard label="本地库存" value={`${stats.local}件`} color="text-emerald-600" />
-        <StatCard label="在途货值" value={`¥${(stats.totalValue/10000).toFixed(1)}万`} color="text-purple-600" />
+        <StatCard label="国内集货仓" value={`${stats.domesticHub}件`} color="text-cyan-600" />
+        <StatCard label="橙联在途" value={`${stats.inTransit}件`} color="text-blue-600" />
         <StatCard label="橙联可售" value={`${stats.available}件`} sub={stats.available === 0 ? "待入仓上架" : ""} color={stats.available === 0 ? "text-gray-400" : "text-emerald-600"} />
+        <StatCard label="总货值" value={`¥${(stats.totalAllValue/10000).toFixed(1)}万`} sub={`移动货值 ¥${(stats.totalBookValue/10000).toFixed(1)}万`} color="text-purple-600" />
       </div>
 
       {/* ---------- 店铺库存对比 ---------- */}
@@ -207,6 +222,7 @@ export default function DashboardPage() {
               <YAxis fontSize={12} />
               <Tooltip />
               <Bar dataKey="在途" fill="#334155" radius={[3, 3, 0, 0]} />
+              <Bar dataKey="国内集货仓" fill="#06b6d4" radius={[3, 3, 0, 0]} />
               <Bar dataKey="可售" fill="#10b981" radius={[3, 3, 0, 0]} />
               <Bar dataKey="本地" fill="#f59e0b" radius={[3, 3, 0, 0]} />
             </BarChart>
@@ -216,7 +232,7 @@ export default function DashboardPage() {
               <div key={s.name} className="text-center p-2 bg-gray-50 rounded">
                 <p className="text-xs text-gray-500">{s.name}</p>
                 <p className="text-lg font-bold mt-1 text-gray-800">{s.SKU数} <span className="text-xs font-normal text-gray-400">SKU</span></p>
-                <p className="text-xs text-gray-400">在途{s.在途}件</p>
+                <p className="text-xs text-gray-400">在途{s.在途}件 · 集货仓{s.国内集货仓}件</p>
               </div>
             ))}
           </div>
@@ -248,9 +264,9 @@ export default function DashboardPage() {
         </ChartCard>
       </div>
 
-      {/* ---------- 在途 TOP10 + 库存预警 ---------- */}
+      {/* ---------- 在途 TOP10 + 国内集货仓 TOP10 ---------- */}
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-        <ChartCard title="在途库存 TOP10" subtitle="头程在途数量最多的SKU">
+        <ChartCard title="橙联在途 TOP10" subtitle="头程在途数量最多的SKU">
           <ResponsiveContainer width="100%" height={320}>
             <BarChart data={inTransitTop} layout="vertical" margin={{ top: 0, right: 20, left: 60, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
@@ -262,6 +278,29 @@ export default function DashboardPage() {
           </ResponsiveContainer>
         </ChartCard>
 
+        <ChartCard title="国内集货仓 TOP10" subtitle="已发往集货仓待组批发运的SKU">
+          {domesticHubTop.length === 0 ? (
+            <div className="py-12 text-center">
+              <CircleCheckBig className="mx-auto mb-3 h-7 w-7 text-slate-200" />
+              <p className="text-sm text-slate-400">暂未发往国内集货仓</p>
+              <p className="text-xs text-slate-300">推进明细至「已发往国内集货仓」或「国内集货仓待发」后此处将展示数据</p>
+            </div>
+          ) : (
+            <ResponsiveContainer width="100%" height={320}>
+              <BarChart data={domesticHubTop} layout="vertical" margin={{ top: 0, right: 20, left: 60, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                <XAxis type="number" fontSize={11} />
+                <YAxis dataKey="name" type="category" fontSize={10} width={90} tickLine={false} />
+                <Tooltip formatter={(v) => [`${v}件`, "集货仓库存"]} labelFormatter={(l) => { const s = domesticHubTop.find(d => d.name === String(l)); return s?.品名 || String(l); }} />
+                <Bar dataKey="value" fill="#06b6d4" radius={[0, 3, 3, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          )}
+        </ChartCard>
+      </div>
+
+      {/* ---------- 库存预警 ---------- */}
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-1">
         <Card>
           <CardHeader className="pb-1"><CardTitle className="text-base">库存预警</CardTitle><CardDescription className="text-xs">总可用库存 ≤ 安全库存 且 不足50件</CardDescription></CardHeader>
           <CardContent>
@@ -409,15 +448,24 @@ export default function DashboardPage() {
                   <Bar dataKey="SKU数" fill="#06b6d4" radius={[3, 3, 0, 0]} name="分配SKU数" />
                 </BarChart>
               </ResponsiveContainer>
-              <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
                 {[
-                  { label: "4.头程物流 (海运中)", count: skus.filter(s => { const st = Array.isArray(s.SKU状态)?s.SKU状态[0]:s.SKU状态; return st==="橙联在途"; }).length },
-                  { label: "3.质检入库 (待清点)", count: skus.filter(s => { const st = Array.isArray(s.SKU状态)?s.SKU状态[0]:s.SKU状态; return st==="待清点"; }).length },
-                  { label: "1.选品评估 (待评估)", count: skus.filter(s => { const st = Array.isArray(s.SKU状态)?s.SKU状态[0]:s.SKU状态; return !st || st==="待评估"; }).length },
+                  { label: "本地仓 (清点/包装)", desc: `${stats.local}件`, icon: "📦" },
+                  { label: "国内集货仓 (待发运)", desc: `${stats.domesticHub}件`, icon: "🏭" },
+                  { label: "橙联在途 (海运中)", desc: `${stats.inTransit}件`, icon: "🚢" },
                 ].map(item => (
                   <div key={item.label} className="flex items-center justify-between p-3 bg-gray-50 rounded">
-                    <span className="text-sm text-gray-700">{item.label}</span>
-                    <Badge variant="secondary" className="text-xs">{item.count} SKU</Badge>
+                    <div>
+                      <span className="text-sm text-gray-700">{item.icon} {item.label}</span>
+                      <p className="text-xs text-gray-400">{item.desc}</p>
+                    </div>
+                    <Badge variant="secondary" className="text-xs">{
+                      skus.filter(s => (
+                        (item.label.includes("本地") && toNumber(s.本地库存) > 0) ||
+                        (item.label.includes("集货仓") && toNumber(s.国内集货仓) > 0) ||
+                        (item.label.includes("在途") && toNumber(s.橙联在途) > 0)
+                      )).length
+                    } SKU</Badge>
                   </div>
                 ))}
               </div>

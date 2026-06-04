@@ -25,12 +25,14 @@
 # misc
 .DS_Store
 *.pem
+*.local
 
 # debug
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
+*.log
 
 # env files (can opt-in for committing if needed)
 .env*
@@ -44,6 +46,19 @@ yarn-error.log*
 
 # local design companion
 .superpowers/
+
+# local agent/editor state
+.agents/
+.claude/
+.codex/
+.idea/
+.vscode/
+
+# caches and temp files
+.cache/
+.turbo/
+tmp/
+temp/
 
 # typescript
 *.tsbuildinfo

@@ -141,7 +141,7 @@ export function planDetailTransition(input: {
     sourceUpdate: {
       ...input.detail,
       ...common,
-      原始数量: originalQuantity - input.quantity,
+      // 原始数量保持不变，用于标识留置库存（原始数量 > 当前数量 = 曾拆分留出）
       当前数量: input.detail.当前数量 - input.quantity,
     },
 	    movedCreate: {

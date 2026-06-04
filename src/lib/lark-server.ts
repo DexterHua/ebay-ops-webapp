@@ -1,7 +1,7 @@
 import { execFile } from "child_process";
 import { unlinkSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
-import { delimiter, dirname, isAbsolute, join, relative } from "path";
+import { basename, delimiter, dirname, isAbsolute, join, relative } from "path";
 import { promisify } from "util";
 
 const execFileAsync = promisify(execFile);
@@ -15,7 +15,6 @@ const TABLE_ENV_KEYS = {
   competitors: "LARK_TABLE_COMPETITORS",
   replenish: "LARK_TABLE_REPLENISH",
   listing: "LARK_TABLE_LISTING",
-  sourcing: "LARK_TABLE_SOURCING",
   flow: "LARK_TABLE_FLOW",
   strategy: "LARK_TABLE_STOCK_STRATEGY",
   summary: "LARK_TABLE_SKU_SUMMARY",
@@ -23,9 +22,16 @@ const TABLE_ENV_KEYS = {
   shipmentBatch: "LARK_TABLE_SHIPMENT_BATCH",
   inventoryDetail: "LARK_TABLE_INVENTORY_DETAIL",
   inventoryException: "LARK_TABLE_INVENTORY_EXCEPTION",
+  inventoryTransaction: "LARK_TABLE_INVENTORY_TRANSACTION",
+  finance: "LARK_TABLE_FINANCE",
 } as const;
 
 export type LarkTable = keyof typeof TABLE_ENV_KEYS;
+
+/** 非主 Base 的表格，需要指定独立 Base Token */
+const BASE_TOKEN_OVERRIDE: Partial<Record<LarkTable, string>> = {
+  finance: "LARK_BASE_FINANCE",
+};
 export interface LarkRecord {
   recordId: string;
   fields: Record<string, unknown>;
@@ -48,6 +54,13 @@ export function assertLarkWriteEnabled(): void {
 
 export function getLarkBaseToken(): string {
   return getRequiredEnv("LARK_BASE_TOKEN");
+}
+
+export function getLarkBaseTokenForTable(table?: LarkTable): string {
+  if (table && BASE_TOKEN_OVERRIDE[table]) {
+    return getRequiredEnv(BASE_TOKEN_OVERRIDE[table]!);
+  }
+  return getLarkBaseToken();
 }
 
 export function getLarkTableId(table: LarkTable): string {
@@ -191,7 +204,7 @@ export async function listLarkRecords(table: LarkTable, maxRecords = getLarkRead
   hasMore: boolean;
 }> {
   if (!Number.isInteger(maxRecords) || maxRecords <= 0) throw new Error("maxRecords 必须为正数");
-  const baseToken = getLarkBaseToken();
+  const baseToken = getLarkBaseTokenForTable(table);
   const tableId = getLarkTableId(table);
   const records: LarkRecord[] = [];
 
@@ -254,7 +267,7 @@ export async function listLarkRecords(table: LarkTable, maxRecords = getLarkRead
 export async function createLarkRecords(table: LarkTable, records: Array<Record<string, unknown>>): Promise<string[]> {
   if (records.length === 0) return [];
   assertLarkWriteEnabled();
-  const baseToken = getLarkBaseToken();
+  const baseToken = getLarkBaseTokenForTable(table);
   const tableId = getLarkTableId(table);
 
   if (hasLarkOpenApiCredentials()) {
@@ -286,10 +299,36 @@ export async function createLarkRecords(table: LarkTable, records: Array<Record<
   }
 }
 
+/** 上传本地文件到已有记录的附件字段。附件字段不要通过普通 record upsert 写入。 */
+export async function uploadLarkRecordAttachment(input: {
+  table: LarkTable;
+  recordId: string;
+  field: string;
+  filePath: string;
+  name?: string;
+}): Promise<void> {
+  assertLarkWriteEnabled();
+  const baseToken = getLarkBaseTokenForTable(input.table);
+  const tableId = getLarkTableId(input.table);
+  const args = [
+    "base", "+record-upload-attachment",
+    "--base-token", baseToken,
+    "--table-id", tableId,
+    "--record-id", input.recordId,
+    "--field-id", input.field,
+    "--file", input.filePath,
+    "--name", input.name || basename(input.filePath),
+    "--as", "user",
+  ];
+  const { stdout } = await runLarkCli(args);
+  const result = JSON.parse(stdout) as { ok?: boolean; error?: { message?: string } };
+  if (!result.ok) throw new Error(result.error?.message || "飞书附件上传失败");
+}
+
 /** 更新一条多维表格记录。 */
 export async function updateLarkRecord(table: LarkTable, recordId: string, fields: Record<string, unknown>): Promise<void> {
   assertLarkWriteEnabled();
-  const baseToken = getLarkBaseToken();
+  const baseToken = getLarkBaseTokenForTable(table);
   const tableId = getLarkTableId(table);
   if (hasLarkOpenApiCredentials()) {
     await larkOpenApi(

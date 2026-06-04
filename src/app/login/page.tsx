@@ -62,7 +62,7 @@ export default function LoginPage() {
               <span className="block text-orange-400">清晰、准确、可执行</span>
             </h2>
             <p className="mt-5 max-w-sm text-sm leading-7 text-slate-400">
-              面向跨境汽摩配业务的一体化工作台，连接库存、商品、客服与选品流程。
+              面向跨境汽摩配业务的一体化工作台，连接库存、商品、客服与运营流程。
             </p>
           </div>
           <div className="flex items-center gap-2 text-xs text-slate-400">

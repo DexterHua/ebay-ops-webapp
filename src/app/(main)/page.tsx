@@ -12,13 +12,13 @@ const EXTRA_DESC: Record<string, string> = {
   inventory: "实时监控海外仓库存 · AI预测断货时间 · 智能补货建议 →",
   listing: "SKU自动选择 → AI生成eBay标题/HTML描述/ItemSpecs → 保存飞书 →",
   reviews: "飞书待办列表 → AI分析买家消息 → 生成回复草稿 → 回写飞书 →",
-  sourcing: "OEM 码检索 → AI市场分析 → 利润预估 + 风险评分 → 保存选品池 →",
   dataEntry: "SKU主数据 · 销售日报 · 库存流水 · 客服异常 · 竞品监控 — 一站式录入 →",
+  finance: "报销申请提报 → 财务审批 → 记录归档 → 飞书烁立德财务表格同步 →",
 };
 
 export default function Home() {
   const [userName, setUserName] = useState("");
-  const [stats, setStats] = useState({ sku: 0, inTransit: 0, value: 0 });
+  const [stats, setStats] = useState({ sku: 0, pipeline: 0, pipelineValue: 0, totalValue: 0 });
 
   useEffect(() => {
     Promise.all([
@@ -31,12 +31,29 @@ export default function Home() {
         const valid = (skus.data || []).filter((s: Record<string, unknown>) => s.SKU && s["中文品名"]);
         const skuByCode = new Map(valid.map((s: Record<string, unknown>) => [String(s.SKU), s]));
         const snapshots = (summary.data || []) as Array<Record<string, unknown>>;
-        const transit = snapshots.reduce((sum, s) => sum + (Number(s["橙联在途"]) || 0), 0);
-        const val = snapshots.reduce((sum, s) => {
+
+        // 在途库存 = 国内集货仓 + 橙联在途（已离开公司但未到可售状态的货物）
+        const pipeline = snapshots.reduce((sum, s) =>
+          sum + (Number(s["国内集货仓"]) || 0) + (Number(s["橙联在途"]) || 0), 0);
+
+        // 计算全部库存总货值（本地 + 国内集货仓 + 橙联在途 + 橙联可售）
+        const totalVal = snapshots.reduce((sum, s) => {
           const sku = skuByCode.get(String(s.SKU)) as Record<string, unknown> | undefined;
-          return sum + (Number(sku?.["采购价"]) || 0) * (Number(s["橙联在途"]) || 0);
+          const price = Number(sku?.["采购价"]) || 0;
+          const qty = (Number(s["本地库存"]) || 0) + (Number(s["国内集货仓"]) || 0)
+            + (Number(s["橙联在途"]) || 0) + (Number(s["橙联可售"]) || 0);
+          return sum + price * qty;
         }, 0);
-        setStats({ sku: valid.length, inTransit: transit, value: val });
+
+        // 在途货值 = 国内集货仓 + 橙联在途 的价值
+        const pipelineVal = snapshots.reduce((sum, s) => {
+          const sku = skuByCode.get(String(s.SKU)) as Record<string, unknown> | undefined;
+          const price = Number(sku?.["采购价"]) || 0;
+          const qty = (Number(s["国内集货仓"]) || 0) + (Number(s["橙联在途"]) || 0);
+          return sum + price * qty;
+        }, 0);
+
+        setStats({ sku: valid.length, pipeline, pipelineValue: pipelineVal, totalValue: totalVal });
       }
     }).catch(() => {});
   }, []);
@@ -52,15 +69,16 @@ export default function Home() {
         <p className="page-description">
           NewPower · VelocityGear · TitanRig 运营中 &nbsp;|&nbsp;
           {stats.sku > 0
-            ? `${stats.sku} SKU · ${stats.inTransit.toLocaleString()} 件在途 · 货值 ¥${(stats.value / 10000).toFixed(1)}万`
+            ? `${stats.sku} SKU · ${stats.pipeline.toLocaleString()} 件在途 · 总货值 ¥${(stats.totalValue / 10000).toFixed(1)}万`
             : <span className="inline-block h-4 w-64 animate-pulse rounded-md bg-muted align-middle" />}
         </p>
       </div>
 
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
         <SummaryCard icon={Boxes} label="有效 SKU" value={stats.sku.toLocaleString()} />
-        <SummaryCard icon={PackageCheck} label="在途库存" value={`${stats.inTransit.toLocaleString()} 件`} />
-        <SummaryCard icon={WalletCards} label="在途货值" value={`¥${(stats.value / 10000).toFixed(1)} 万`} />
+        <SummaryCard icon={PackageCheck} label="在途库存" value={`${stats.pipeline.toLocaleString()} 件`} />
+        <SummaryCard icon={WalletCards} label="在途货值" value={`¥${(stats.pipelineValue / 10000).toFixed(1)} 万`} />
+        <SummaryCard icon={WalletCards} label="总货值" value={`¥${(stats.totalValue / 10000).toFixed(1)} 万`} />
       </div>
 
       {/* 快速入口 */}

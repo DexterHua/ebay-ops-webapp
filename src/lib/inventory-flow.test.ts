@@ -111,7 +111,7 @@ describe("inventory flow", () => {
     expect((result.sourceUpdate.异常数量 || 0) + (result.movedCreate?.异常数量 || 0)).toBe(3);
   });
 
-  it("部分拆分后原始数量守恒", () => {
+  it("部分拆分后源明细保留原始数量以标记留置库存", () => {
     const input = {
       detail: { 明细编号: "LOT-1", SKU: "SKU-1", 当前数量: 100, 原始数量: 100, 当前状态: "待包装" as const, 版本号: 1 },
       quantity: 80,
@@ -122,12 +122,17 @@ describe("inventory flow", () => {
       now: 1780400000000,
     };
     const result = planDetailTransition(input);
-    expect(result.sourceUpdate.原始数量).toBe(20);
+    // 源明细原始数量保持 100 不变，用于 UI 识别留置库存（原始数量 > 当前数量）
+    expect(result.sourceUpdate.原始数量).toBe(100);
+    expect(result.sourceUpdate.当前数量).toBe(20);
     expect(result.movedCreate?.原始数量).toBe(80);
-    expect((result.sourceUpdate.原始数量 || 0) + (result.movedCreate?.原始数量 || 0)).toBe(100);
+    expect(result.movedCreate?.当前数量).toBe(80);
+    // 留置标记：源原始(100) > 源当前(20) → 已拆出 80
+    expect((result.sourceUpdate.原始数量 || 0)).toBeGreaterThan(result.sourceUpdate.当前数量);
 
+    // 无原始数量字段时回退为当前数量，源保留 undefined/回退值
     const missingOriginal = planDetailTransition({ ...input, detail: { ...input.detail, 原始数量: undefined } });
-    expect(missingOriginal.sourceUpdate.原始数量).toBe(20);
+    expect(missingOriginal.sourceUpdate.原始数量).toBeUndefined();
     expect(missingOriginal.movedCreate?.原始数量).toBe(80);
   });
 

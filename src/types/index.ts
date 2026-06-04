@@ -107,25 +107,6 @@ export interface ReplyDraft {
   followupAction?: string;
 }
 
-// --- 选品 ---
-export interface SourcingInput {
-  category: string;
-  keywords: string;
-  budgetRange?: { min: number; max: number };
-}
-
-export interface SourcingAnalysis {
-  category: string;
-  keywords: string;
-  opportunityScore: number; // 1-10
-  estimatedProfitRate: number;
-  estimatedCost: number;
-  suggestedPrice: number;
-  competitorLinks: string[];
-  aiSummary: string;
-  riskFlags: string[];
-}
-
 // --- AI 响应 ---
 export interface AIResponse<T> {
   success: boolean;
@@ -148,7 +129,7 @@ export const MODULES = [
   { id: "inventoryFlow", name: "库存流转", path: "/inventory-flow", description: "采购批次、头程物流与库存状态批量推进" },
   { id: "listing", name: "详情页生成", path: "/listing", description: "AI 生成 eBay 标题、描述与 Item Specs" },
   { id: "reviews", name: "评论回复", path: "/reviews", description: "智能生成评价回复草稿" },
-  { id: "sourcing", name: "选品助手", path: "/sourcing", description: "AI 驱动的选品分析与评分" },
   { id: "dataEntry", name: "数据录入", path: "/data-entry", description: "飞书多维表格在线录入" },
+  { id: "finance", name: "财务报销", path: "/finance", description: "报销申请提交与审批管理" },
   { id: "accounts", name: "账号管理", path: "/accounts", description: "管理系统登录账号，仅管理员可用", adminOnly: true },
 ] as const;

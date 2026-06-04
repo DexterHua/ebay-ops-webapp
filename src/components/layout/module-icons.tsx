@@ -5,7 +5,7 @@ import {
   LayoutDashboard,
   MessageSquareText,
   PackageSearch,
-  ScanSearch,
+  ReceiptText,
   UsersRound,
   type LucideProps,
 } from "lucide-react";
@@ -16,8 +16,8 @@ export function ModuleIcon({ moduleId, ...props }: LucideProps & { moduleId: str
     case "inventoryFlow": return <Boxes {...props} />;
     case "listing": return <FileText {...props} />;
     case "reviews": return <MessageSquareText {...props} />;
-    case "sourcing": return <ScanSearch {...props} />;
     case "dataEntry": return <ClipboardPenLine {...props} />;
+    case "finance": return <ReceiptText {...props} />;
     case "accounts": return <UsersRound {...props} />;
     default: return <LayoutDashboard {...props} />;
   }

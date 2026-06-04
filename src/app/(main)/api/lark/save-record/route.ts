@@ -19,7 +19,6 @@ const TABLE_MAP: Record<string, LarkTable> = {
   issues: "issues",
   competitors: "competitors",
   replenish: "replenish",
-  sourcing: "sourcing",
 };
 
 const DATE_FIELDS: Partial<Record<LarkTable, string[]>> = {

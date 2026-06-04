@@ -46,13 +46,8 @@ export async function callAI(params: {
   userMessage: string;
   maxTokens?: number;
   temperature?: number;
-  researchMode?: "sourcing";
-  researchInput?: {
-    category: string;
-    oemCode: string;
-  };
 }): Promise<AIResponse<string>> {
-  const { systemPrompt, userMessage, maxTokens = 4096, temperature = 0.7, researchMode, researchInput } = params;
+  const { systemPrompt, userMessage, maxTokens = 4096, temperature = 0.7 } = params;
 
   try {
     const response = await fetch("/api/ai", {
@@ -63,8 +58,6 @@ export async function callAI(params: {
         userMessage,
         maxTokens,
         temperature,
-        researchMode,
-        researchInput,
       }),
     });
 
@@ -81,7 +74,7 @@ export async function callAI(params: {
       return {
         success: false,
         error: timeout
-          ? "选品分析生成超时，请重试。系统已启用流式响应以减少超时。"
+          ? "分析生成超时，请重试。"
           : `服务返回异常 (${response.status})，请稍后重试`,
       };
     }
@@ -110,11 +103,6 @@ export async function callAIStructured<T>(params: {
   userMessage: string;
   maxTokens?: number;
   temperature?: number;
-  researchMode?: "sourcing";
-  researchInput?: {
-    category: string;
-    oemCode: string;
-  };
 }): Promise<AIResponse<T>> {
   const result = await callAI({
     ...params,

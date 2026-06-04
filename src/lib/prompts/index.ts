@@ -16,8 +16,3 @@ export {
   REVIEWS_SYSTEM_PROMPT,
   buildReviewsUserMessage,
 } from "./reviews";
-
-export {
-  SOURCING_SYSTEM_PROMPT,
-  buildSourcingUserMessage,
-} from "./sourcing";

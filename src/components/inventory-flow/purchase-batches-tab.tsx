@@ -45,7 +45,6 @@ function emptyLine(): DraftLine {
 export function PurchaseBatchesTab() {
   const router = useRouter();
   const [purchaseBatchNo, setPurchaseBatchNo] = useState("");
-  const [supplier, setSupplier] = useState("");
   const [orderedAt, setOrderedAt] = useState(todayString);
   const [lines, setLines] = useState<DraftLine[]>([emptyLine()]);
   const [skuOptions, setSkuOptions] = useState<SkuLookupOption[]>([]);
@@ -116,10 +115,6 @@ export function PurchaseBatchesTab() {
       toast.error("采购批次号不能为空");
       return undefined;
     }
-    if (!supplier.trim()) {
-      toast.error("供应商不能为空");
-      return undefined;
-    }
     if (normalizedLines.length === 0) {
       toast.error("明细不能为空");
       return undefined;
@@ -146,7 +141,6 @@ export function PurchaseBatchesTab() {
 
     return {
       purchaseBatchNo: purchaseBatchNo.trim(),
-      supplier: supplier.trim(),
       orderedAt,
       items: normalizedLines,
     };
@@ -167,7 +161,6 @@ export function PurchaseBatchesTab() {
       if (!response.ok || !json.success) throw new Error(json.error || "采购批次保存失败");
       toast.success("采购批次已保存", { description: `${draft.items.length} 条 SKU 明细已进入本地仓待清点` });
       setPurchaseBatchNo("");
-      setSupplier("");
       setOrderedAt(todayString());
       setLines([emptyLine()]);
     } catch (error) {
@@ -194,14 +187,10 @@ export function PurchaseBatchesTab() {
         </div>
       </CardHeader>
       <CardContent className="space-y-5">
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
           <div>
             <label className="mb-1 block text-xs text-slate-500">采购批次号 *</label>
             <Input value={purchaseBatchNo} onChange={(event) => setPurchaseBatchNo(event.target.value)} placeholder="PO-202606-001" />
-          </div>
-          <div>
-            <label className="mb-1 block text-xs text-slate-500">供应商 *</label>
-            <Input value={supplier} onChange={(event) => setSupplier(event.target.value)} placeholder="供应商名称" />
           </div>
           <div>
             <label className="mb-1 block text-xs text-slate-500">下单日期</label>

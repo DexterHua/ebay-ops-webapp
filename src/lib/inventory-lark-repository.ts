@@ -7,11 +7,16 @@ import {
 } from "@/lib/lark-server";
 import type {
   InventoryBatchRepository,
+  InventoryExceptionRecord,
   InventoryTransactionRecord,
 } from "@/lib/inventory-batch-server";
 import type { InventoryDetail, InventoryState } from "@/lib/inventory-flow";
 
 const transactionStore = new Map<string, InventoryTransactionRecord>();
+
+function hasPersistentTransactionTable(): boolean {
+  return Boolean(process.env.LARK_TABLE_INVENTORY_TRANSACTION?.trim());
+}
 
 function toNumber(value: unknown, fallback = 0): number {
   if (typeof value === "number") return Number.isFinite(value) ? value : fallback;
@@ -71,6 +76,59 @@ function detailToFields(detail: InventoryDetail): Record<string, unknown> {
   }).filter(([, value]) => value !== undefined && value !== ""));
 }
 
+function transactionFromFields(fields: Record<string, unknown>): InventoryTransactionRecord {
+  const transactionId = readLarkText(fields.事务号);
+  const digest = readLarkText(fields.请求摘要);
+  const status = readLarkText(fields.事务状态) === "completed" ? "completed" : "pending";
+  if (!transactionId || !digest) throw new Error("库存事务记录缺少事务号或请求摘要");
+  return { transactionId, digest, status };
+}
+
+function transactionToFields(record: InventoryTransactionRecord): Record<string, unknown> {
+  return {
+    事务号: record.transactionId,
+    请求摘要: record.digest,
+    事务状态: record.status,
+    更新时间: Date.now(),
+  };
+}
+
+function exceptionFromFields(fields: Record<string, unknown>): InventoryExceptionRecord {
+  return {
+    异常编号: readLarkText(fields.异常编号),
+    来源明细编号: readLarkText(fields.来源明细编号),
+    SKU: readLarkText(fields.SKU),
+    异常类型: readLarkText(fields.异常类型) as InventoryExceptionRecord["异常类型"],
+    责任节点: readLarkText(fields.责任节点) as InventoryExceptionRecord["责任节点"],
+    预期数量: toNumber(fields.预期数量),
+    实收数量: toNumber(fields.实收数量),
+    差异数量: toNumber(fields.差异数量),
+    处理状态: readLarkText(fields.处理状态) as InventoryExceptionRecord["处理状态"],
+    负责人: readLarkText(fields.负责人),
+    创建时间: toNumber(fields.创建时间),
+    关闭时间: toNumber(fields.关闭时间),
+    备注: readLarkText(fields.备注),
+  };
+}
+
+function exceptionToFields(exception: Partial<InventoryExceptionRecord>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries({
+    异常编号: exception.异常编号,
+    来源明细编号: exception.来源明细编号,
+    SKU: exception.SKU,
+    异常类型: exception.异常类型,
+    责任节点: exception.责任节点,
+    预期数量: exception.预期数量,
+    实收数量: exception.实收数量,
+    差异数量: exception.差异数量,
+    处理状态: exception.处理状态,
+    负责人: exception.负责人,
+    创建时间: exception.创建时间,
+    关闭时间: exception.关闭时间,
+    备注: exception.备注,
+  }).filter(([, value]) => value !== undefined && value !== ""));
+}
+
 function stockFlowMatches(fields: Record<string, unknown>, target: Record<string, unknown>): boolean {
   return readLarkText(fields.流转事务号) === readLarkText(target.流转事务号)
     && readLarkText(fields.来源明细编号) === readLarkText(target.来源明细编号)
@@ -98,15 +156,28 @@ async function upsertByTextField(
 export function createLarkInventoryBatchRepository(): InventoryBatchRepository {
   return {
     async getTransaction(transactionId) {
+      if (hasPersistentTransactionTable()) {
+        const result = await listLarkRecords("inventoryTransaction");
+        const existing = findUniqueLarkRecordByText(result, "事务号", transactionId);
+        return existing ? transactionFromFields(existing.fields) : undefined;
+      }
       return transactionStore.get(transactionId);
     },
 
     async saveTransaction(record) {
+      if (hasPersistentTransactionTable()) {
+        await upsertByTextField("inventoryTransaction", "事务号", record.transactionId, transactionToFields(record));
+        return;
+      }
       transactionStore.set(record.transactionId, record);
     },
 
     async upsertPurchaseBatch(batchNo, fields) {
       await upsertByTextField("purchaseBatch", "采购批次号", batchNo, fields);
+    },
+
+    async upsertShipmentBatch(batchNo, fields) {
+      await upsertByTextField("shipmentBatch", "物流批次号", batchNo, fields);
     },
 
     async upsertInventoryDetail(detail) {
@@ -125,6 +196,20 @@ export function createLarkInventoryBatchRepository(): InventoryBatchRepository {
 
     async updateInventoryDetail(detailId, detail) {
       await upsertByTextField("inventoryDetail", "明细编号", detailId, detailToFields({ ...detail, 明细编号: detailId }));
+    },
+
+    async upsertInventoryException(exception) {
+      await upsertByTextField("inventoryException", "异常编号", exception.异常编号, exceptionToFields(exception));
+    },
+
+    async getInventoryException(exceptionId) {
+      const result = await listLarkRecords("inventoryException");
+      const existing = findUniqueLarkRecordByText(result, "异常编号", exceptionId);
+      return existing ? exceptionFromFields(existing.fields) : undefined;
+    },
+
+    async updateInventoryException(exceptionId, fields) {
+      await upsertByTextField("inventoryException", "异常编号", exceptionId, exceptionToFields({ ...fields, 异常编号: exceptionId }));
     },
 
     async upsertStockFlow(_flowId, fields) {
@@ -148,6 +233,14 @@ export function createLarkInventoryBatchRepository(): InventoryBatchRepository {
       return result.records
         .map((record) => detailFromFields(record.recordId, record.fields))
         .filter((detail) => wanted.has(detail.SKU));
+    },
+
+    async listInventoryDetailsByState(state) {
+      const result = await listLarkRecords("inventoryDetail");
+      if (result.hasMore) throw new Error("库存明细记录未完整读取，无法按状态筛选");
+      return result.records
+        .map((record) => detailFromFields(record.recordId, record.fields))
+        .filter((detail) => detail.当前状态 === state);
     },
 
     async updateSkuSummary(sku, fields) {
