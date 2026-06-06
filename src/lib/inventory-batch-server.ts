@@ -12,9 +12,18 @@ export interface InventoryTransactionRecord {
   transactionId: string;
   digest: string;
   status: "pending" | "completed";
+  operationType?: string;
+  operator?: string;
+  createdAt?: number;
+  updatedAt?: number;
+  completedAt?: number;
+  failureReason?: string;
+  recoveryContext?: string;
+  remark?: string;
 }
 
 export type InventoryExceptionType = "清点差异" | "集货仓签收差异" | "海外仓签收差异" | "上架差异" | "报损" | "其他";
+export type SalesInventoryExceptionType = "销售扣减库存不足";
 export type InventoryExceptionStatus = "待处理" | "处理中" | "已补回" | "已报损" | "已关闭";
 export type InventoryExceptionAction = "补回库存" | "确认报损" | "关闭异常";
 
@@ -22,7 +31,7 @@ export interface InventoryExceptionRecord {
   异常编号: string;
   来源明细编号: string;
   SKU: string;
-  异常类型: InventoryExceptionType;
+  异常类型: InventoryExceptionType | SalesInventoryExceptionType;
   责任节点: InventoryState;
   预期数量: number;
   实收数量: number;
@@ -446,6 +455,9 @@ export async function resolveInventoryException(
 
   const exception = await repo.getInventoryException(input.exceptionId);
   if (!exception) throw new Error(`未找到异常 ${input.exceptionId}`);
+  if (exception.异常类型 === "销售扣减库存不足") {
+    throw new Error("销售扣减库存不足不能通过差异补回处理，请补录库存或修正销售日报后重新扫描");
+  }
   if (!["待处理", "处理中"].includes(exception.处理状态)) {
     throw new Error(`异常 ${input.exceptionId} 已处理，不能重复关闭`);
   }

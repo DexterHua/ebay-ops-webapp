@@ -6,6 +6,7 @@ import { getJwtSecret } from "@/lib/auth-config";
 const PUBLIC_PATHS = [
   /^\/login$/,
   /^\/api\/auth\//,
+  /^\/api\/inventory\/sales-scan$/,
   /^\/_next\//,
   /^\/logo\.png$/,
   /^\/logo-thumb\.png$/,

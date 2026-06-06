@@ -23,6 +23,7 @@ const TABLE_ENV_KEYS = {
   inventoryDetail: "LARK_TABLE_INVENTORY_DETAIL",
   inventoryException: "LARK_TABLE_INVENTORY_EXCEPTION",
   inventoryTransaction: "LARK_TABLE_INVENTORY_TRANSACTION",
+  inventoryWarning: "LARK_TABLE_INVENTORY_WARNING",
   finance: "LARK_TABLE_FINANCE",
 } as const;
 

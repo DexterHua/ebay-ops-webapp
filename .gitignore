@@ -38,6 +38,9 @@ yarn-error.log*
 .env*
 !.env.example
 
+# local user data
+/data/users.json
+
 # vercel
 .vercel
 

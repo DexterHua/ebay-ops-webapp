@@ -81,7 +81,19 @@ function transactionFromFields(fields: Record<string, unknown>): InventoryTransa
   const digest = readLarkText(fields.请求摘要);
   const status = readLarkText(fields.事务状态) === "completed" ? "completed" : "pending";
   if (!transactionId || !digest) throw new Error("库存事务记录缺少事务号或请求摘要");
-  return { transactionId, digest, status };
+  return {
+    transactionId,
+    digest,
+    status,
+    operationType: readLarkText(fields.操作类型),
+    operator: readLarkText(fields.操作人),
+    createdAt: toNumber(fields.创建时间),
+    updatedAt: toNumber(fields.更新时间),
+    completedAt: toNumber(fields.完成时间),
+    failureReason: readLarkText(fields.失败原因),
+    recoveryContext: readLarkText(fields.恢复上下文),
+    remark: readLarkText(fields.备注),
+  };
 }
 
 function transactionToFields(record: InventoryTransactionRecord): Record<string, unknown> {
@@ -89,7 +101,14 @@ function transactionToFields(record: InventoryTransactionRecord): Record<string,
     事务号: record.transactionId,
     请求摘要: record.digest,
     事务状态: record.status,
-    更新时间: Date.now(),
+    操作类型: record.operationType,
+    操作人: record.operator,
+    创建时间: record.createdAt,
+    更新时间: record.updatedAt ?? Date.now(),
+    完成时间: record.completedAt || null,
+    失败原因: record.failureReason || null,
+    恢复上下文: record.recoveryContext || null,
+    备注: record.remark,
   };
 }
 

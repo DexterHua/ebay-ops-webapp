@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "main": ".open-next/worker.js",
+  "main": "cloudflare-worker.mjs",
   "name": "ebay-ops-webapp",
   "compatibility_date": "2026-05-31",
   "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
@@ -14,6 +14,9 @@
       "id": "7e25d7ecdcf14e0ab3a938c7c177acfd"
     }
   ],
+  "triggers": {
+    "crons": ["0 1 * * *", "0 9 * * *"]
+  },
   "vars": {
     "DEEPSEEK_MODEL": "deepseek-v4-pro",
     "LARK_WRITE_ENABLED": "true",

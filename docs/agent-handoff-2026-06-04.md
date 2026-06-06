@@ -42,21 +42,22 @@ Workspace: `/Users/chequan/Documents/SolidSrUn/ebay-ops-webapp`
 
 ### 2.3 飞书多维表格状态
 
-主 Base Token: `RveVbcouwa06KcsDXcIc45AInkg`（26 张表）
+主 Base Token 通过 `.env.local` 的 `LARK_BASE_TOKEN` 配置（27 张表）。不要把真实 token 写入文档或提交到 Git。
 
 库存流转新增的 4 张表（已建好并配置权限）：
 
 | 表名 | Table ID | 用途 |
 |------|----------|------|
-| `20_采购批次` | `tblHg1ichWAZ0knp` | 采购批次号、采购员、下单日期、批次状态 |
-| `21_头程物流批次` | `tblLJLZ8YpnaYrXK` | 物流批次号、承运商、跟踪号、发货日期、批次状态 |
-| `22_SKU批次库存明细` | `tblClttEzRKLUyhy` | 明细编号、SKU、数量、状态、版本号等 15 个字段 |
-| `23_库存异常` | `tblaVoJ8bWHOw6DJ` | 异常编号、异常类型、差异数量等 13 个字段 |
+| `20_采购批次` | `LARK_TABLE_PURCHASE_BATCH` | 采购批次号、采购员、下单日期、批次状态 |
+| `21_头程物流批次` | `LARK_TABLE_SHIPMENT_BATCH` | 物流批次号、承运商、跟踪号、发货日期、批次状态 |
+| `22_SKU批次库存明细` | `LARK_TABLE_INVENTORY_DETAIL` | 明细编号、SKU、数量、状态、版本号等 15 个字段 |
+| `23_库存异常` | `LARK_TABLE_INVENTORY_EXCEPTION` | 异常编号、异常类型、差异数量等 13 个字段 |
+| `24_库存流转事务` | `LARK_TABLE_INVENTORY_TRANSACTION` | 事务号、请求摘要、事务状态、失败原因等，用于持久化幂等事务 |
 
 `02_库存流水` 已补全新字段（流转事务号、来源明细编号、前/后状态、操作类型等 8 个）。
 `19_SKU运营汇总` 已补全 `国内集货仓`、`异常暂存`、`账面总量` 字段。
 
-财务 Base: `烁立德财务表格` (`QrvablHAgabBb5siESEcoAyhnOc`)，单表 `数据表` (`tblxIPxyLNGOyPsz`)，已新增 `报销类型` 和 `审批状态` 字段。
+财务 Base 通过 `.env.local` 的 `LARK_BASE_FINANCE` 配置，财务表通过 `LARK_TABLE_FINANCE` 配置；已新增 `报销类型` 和 `审批状态` 字段。
 
 ## 3. 技术栈
 
@@ -139,11 +140,11 @@ src/components/ui/               # shadcn/ui 组件（checkbox/button/card/dialo
 ```
 JWT_SECRET=...                   # JWT 签名密钥
 DEEPSEEK_API_KEY=sk-...          # DeepSeek API Key
-LARK_BASE_TOKEN=RveVb...         # 主运营 Base
-LARK_BASE_FINANCE=Qrvab...       # 财务 Base
+LARK_BASE_TOKEN=...              # 主运营 Base
+LARK_BASE_FINANCE=...            # 财务 Base
 LARK_WRITE_ENABLED=true          # 生产环境需设为 false
 LARK_TABLE_SKU/PURCHASE_BATCH/INVENTORY_DETAIL/...  # 各表 ID
-LARK_TABLE_FINANCE=tblxIPxyLNGOyPsz
+LARK_TABLE_FINANCE=...
 LARK_CLI_PATH=...                # lark-cli 路径
 ```
 
@@ -151,11 +152,8 @@ LARK_CLI_PATH=...                # lark-cli 路径
 
 ### 5.1 高优先级
 
-- [ ] **库存异常 Tab** (`exceptions-tab.tsx`) — 目前是占位组件，需接入 `23_库存异常` 表实现：
-  - 异常记录创建（清点差异、签收差异、报损等）
-  - 异常处理方法（补回、报损、关闭）
-  - 与明细的关联锁定
-- [ ] **事务持久化** — `inventory-lark-repository.ts` 的 `transactionStore` 是 in-memory `Map`，重启即失。应写入独立的飞书事务表或数据库，防止生产环境幂等失效
+- [x] **库存异常 Tab** (`exceptions-tab.tsx`) — 已接入 `23_库存异常` 表，支持异常列表筛选、补回库存和确认报损；推进弹窗支持实收数量，差异会自动生成异常并进入异常暂存
+- [x] **事务持久化** — 已创建 `24_库存流转事务` 并配置 `LARK_TABLE_INVENTORY_TRANSACTION`；`inventory-lark-repository.ts` 会优先写入飞书事务表，未配置时才回退内存 `Map`
 - [ ] **Dashboard 数据口径统一** — 仪表盘从 `01_SKU主数据`、`19_SKU运营汇总`、`18_SKU库存策略` 合并后使用，但部分数据仍依赖 `SKU状态`（旧字段），建议逐步切换为从 `19_SKU运营汇总` 的 `国内集货仓`、`橙联在途` 等精确字段
 
 ### 5.2 中优先级
