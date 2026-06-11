@@ -21,6 +21,7 @@ class MemoryInventoryRepo implements InventoryBatchRepository {
   stockFlows = new Map<string, Record<string, unknown>>();
   summaries = new Map<string, Record<string, unknown>>();
   failStockFlowIds = new Set<string>();
+  failShipmentBatchWith = "";
 
   async getTransaction(transactionId: string) {
     return this.transactions.get(transactionId);
@@ -35,6 +36,7 @@ class MemoryInventoryRepo implements InventoryBatchRepository {
   }
 
   async upsertShipmentBatch(batchNo: string, fields: Record<string, unknown>) {
+    if (this.failShipmentBatchWith) throw new Error(this.failShipmentBatchWith);
     this.shipmentBatches.set(batchNo, { ...(this.shipmentBatches.get(batchNo) || {}), ...fields });
   }
 
@@ -313,6 +315,43 @@ describe("inventory batch server", () => {
       expect(repo.summaries.get("SKU-1")).toMatchObject({
         橙联在途: 10,
         本地库存: 0,
+      });
+    });
+
+    it("物流批次登记表无写权限时仍可绑定并推进至橙联在途", async () => {
+      const repo = new MemoryInventoryRepo();
+      repo.failShipmentBatchWith = "飞书 API 调用失败（1254302）：RolePermNotAllow";
+      await createPurchaseReceipt(repo, purchaseInput({
+        transactionId: "TX-PO-1",
+        lines: [{ sku: "SKU-1", productName: "门锁", quantity: 10 }],
+      }));
+      await advanceToDomesticReady(repo, "LOT-PO-202606-001-SKU-1-1");
+
+      await createAndBindShipment(repo, {
+        transactionId: "TX-SHIP-PERM-1",
+        shipmentBatchNo: "SHIP-PERM-001",
+        carrier: "DHL",
+        trackingNo: "TRK-123",
+        shippedAt: 1780500000000,
+        operator: "运营",
+        now: 1780500001000,
+        bindings: [
+          { detailId: "LOT-PO-202606-001-SKU-1-1", expectedVersion: 4 },
+        ],
+        autoTransition: true,
+      });
+
+      expect(repo.shipmentBatches.has("SHIP-PERM-001")).toBe(false);
+      const updatedDetail = repo.details.get("LOT-PO-202606-001-SKU-1-1");
+      expect(updatedDetail?.当前物流批次).toBe("SHIP-PERM-001");
+      expect(updatedDetail?.当前状态).toBe("橙联在途");
+      expect(repo.stockFlows.get("TX-SHIP-PERM-1-LOT-PO-202606-001-SKU-1-1-BIND")).toMatchObject({
+        操作类型: "物流绑定",
+        物流批次号: "SHIP-PERM-001",
+      });
+      expect(repo.summaries.get("SKU-1")).toMatchObject({
+        国内集货仓: 0,
+        橙联在途: 10,
       });
     });
 

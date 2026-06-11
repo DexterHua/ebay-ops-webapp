@@ -7,12 +7,14 @@ import { getJwtSecret } from "@/lib/auth-config";
 export async function POST(request: NextRequest) {
   try {
     const { name, password } = await request.json();
+    const normalizedName = String(name || "").trim();
+    const normalizedPassword = String(password || "").trim();
 
-    if (!name || !password) {
+    if (!normalizedName || !normalizedPassword) {
       return NextResponse.json({ ok: false, error: "请输入姓名和密码" }, { status: 400 });
     }
 
-    const u = await verifyUser(name, password);
+    const u = await verifyUser(normalizedName, normalizedPassword);
     if (!u) {
       return NextResponse.json({ ok: false, error: "姓名或密码不正确" }, { status: 401 });
     }
@@ -38,7 +40,8 @@ export async function POST(request: NextRequest) {
     });
 
     return NextResponse.json({ ok: true, name: u.name, isAdmin: admin, role });
-  } catch {
+  } catch (error) {
+    console.error("[auth/login] 登录服务异常", error);
     return NextResponse.json({ ok: false, error: "服务错误" }, { status: 500 });
   }
 }

@@ -14,6 +14,7 @@ const TABLE_IDS: Record<string, LarkTable> = {
   flow: "flow",
   strategy: "strategy",
   summary: "summary",
+  inventoryWarning: "inventoryWarning",
 };
 
 export async function GET(request: NextRequest) {

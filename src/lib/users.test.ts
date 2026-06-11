@@ -135,10 +135,15 @@ describe("用户持久化", () => {
     ]);
   });
 
-  test("新增用户仅接受 purchaser 或 operator", async () => {
+  test("新增用户接受管理员、采购员或运营角色", async () => {
+    expect(await addUser("新管理员", "123456", "admin")).toEqual({ ok: true });
     expect(await addUser("新采购", "123456", "purchaser")).toEqual({ ok: true });
-    expect(await addUser("新管理员", "123456", "admin")).toEqual({ ok: false, error: "角色无效" });
     expect(await addUser("异常角色", "123456", "viewer" as never)).toEqual({ ok: false, error: "角色无效" });
+
+    expect(await listUsers()).toEqual([
+      expect.objectContaining({ name: "新管理员", role: "admin" }),
+      expect.objectContaining({ name: "新采购", role: "purchaser" }),
+    ]);
   });
 
   test("重置密码后递增旧数据的会话版本", async () => {

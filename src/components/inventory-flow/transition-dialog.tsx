@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ArrowRight, Loader2, Split } from "lucide-react";
+import { ArrowRight, Loader2, Split, Truck } from "lucide-react";
 import { toast } from "sonner";
 import { INVENTORY_STATES, type InventoryState } from "@/lib/inventory-flow";
 import { Badge } from "@/components/ui/badge";
@@ -48,6 +48,10 @@ function getExceptionType(nextState?: InventoryState) {
   return "其他";
 }
 
+function todayString() {
+  return new Date().toISOString().slice(0, 10);
+}
+
 export function TransitionDialog({
   open,
   details,
@@ -63,12 +67,20 @@ export function TransitionDialog({
   // 用户手动修改的数量（key=recordId，value=字符串）。未修改的明细默认取当期全部数量。
   const [quantityOverrides, setQuantityOverrides] = useState<Record<string, string>>({});
   const [actualQuantityOverrides, setActualQuantityOverrides] = useState<Record<string, string>>({});
+  const [shipmentBatchNo, setShipmentBatchNo] = useState("");
+  const [carrier, setCarrier] = useState("");
+  const [trackingNo, setTrackingNo] = useState("");
+  const [shippedAt, setShippedAt] = useState(todayString);
 
   // 弹窗关闭时清空覆盖值，下次打开时使用默认全部数量
   const handleOpenChange = (nextOpen: boolean) => {
     if (!nextOpen) {
       setQuantityOverrides({});
       setActualQuantityOverrides({});
+      setShipmentBatchNo("");
+      setCarrier("");
+      setTrackingNo("");
+      setShippedAt(todayString());
     }
     onOpenChange(nextOpen);
   };
@@ -80,6 +92,8 @@ export function TransitionDialog({
   const currentState = currentStates[0] || "";
   const nextState = getNextState(currentState);
   const skuCount = new Set(details.map((detail) => toText(detail.SKU)).filter(Boolean)).size;
+  const needsShipmentBatch = nextState === "橙联在途"
+    && details.some((detail) => !toText(detail.当前物流批次));
 
   // 每条明细的有效数量：用户覆盖值 或 当前全部数量
   const effectiveQuantities = useMemo(() => {
@@ -138,7 +152,11 @@ export function TransitionDialog({
     if (details.length === 0) return "请选择明细";
     if (currentStates.length !== 1) return "不同当前状态的明细不能在同一次操作中推进";
     if (!nextState) return "当前状态没有允许的下一状态";
-    if (nextState === "橙联在途" && details.some((detail) => !toText(detail.当前物流批次))) {
+    if (needsShipmentBatch) {
+      if (currentState !== "国内集货仓待发") return "只有国内集货仓待发明细可以创建物流批次并发运";
+      if (!shipmentBatchNo.trim()) return "物流批次号不能为空";
+      if (!carrier.trim()) return "承运商不能为空";
+    } else if (nextState === "橙联在途" && details.some((detail) => !toText(detail.当前物流批次))) {
       return "进入橙联在途前必须绑定物流批次";
     }
     for (const detail of details) {
@@ -147,9 +165,11 @@ export function TransitionDialog({
       if (qty > toNumber(detail.当前数量)) {
         return `明细 ${toText(detail.SKU) || toText(detail.明细编号)} 推进数量超限`;
       }
-      const actualQty = parsedActualQuantities[detail.recordId];
-      if (actualQty < 0) return `明细 ${toText(detail.SKU) || toText(detail.明细编号)} 实收数量必须为非负整数`;
-      if (actualQty > qty) return `明细 ${toText(detail.SKU) || toText(detail.明细编号)} 实收数量不能大于推进数量`;
+      if (!needsShipmentBatch) {
+        const actualQty = parsedActualQuantities[detail.recordId];
+        if (actualQty < 0) return `明细 ${toText(detail.SKU) || toText(detail.明细编号)} 实收数量必须为非负整数`;
+        if (actualQty > qty) return `明细 ${toText(detail.SKU) || toText(detail.明细编号)} 实收数量不能大于推进数量`;
+      }
     }
     if (totalAdvanceQty <= 0) return "至少需要推进 1 件";
     return "";
@@ -167,6 +187,37 @@ export function TransitionDialog({
 
     setSubmitting(true);
     try {
+      if (needsShipmentBatch) {
+        const response = await fetch("/api/inventory-flow/shipments", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            shipmentBatchNo: shipmentBatchNo.trim(),
+            carrier: carrier.trim(),
+            trackingNo: trackingNo.trim(),
+            shippedAt,
+            autoTransition: true,
+            bindings: details.map((detail) => ({
+              detailId: toText(detail.明细编号),
+              version: toNumber(detail.版本号),
+              quantity: parsedQuantities[detail.recordId] || toNumber(detail.当前数量),
+            })),
+          }),
+        });
+        const json = await response.json().catch(() => ({})) as { success?: boolean; error?: string };
+        if (!response.ok || !json.success) throw new Error(json.error || "物流发运失败");
+
+        const remainingDesc = totalRemainingQty > 0
+          ? `，${totalRemainingQty} 件留置国内集货仓待发等待合并`
+          : "";
+        toast.success("物流批次已创建并发运", {
+          description: `${details.length} 条明细进入橙联在途，发运 ${totalAdvanceQty} 件${remainingDesc}`,
+        });
+        onOpenChange(false);
+        onCompleted();
+        return;
+      }
+
       const response = await fetch("/api/inventory-flow/transitions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -209,9 +260,11 @@ export function TransitionDialog({
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-xl">
         <DialogHeader>
-          <DialogTitle>确认推进状态</DialogTitle>
+          <DialogTitle>{needsShipmentBatch ? "填写物流信息并发运" : "确认推进状态"}</DialogTitle>
           <DialogDescription>
-            提交后会写入库存明细、库存流水，并重算 SKU 运营汇总。
+            {needsShipmentBatch
+              ? "提交后会创建物流批次、绑定所选明细，并直接推进至橙联在途。"
+              : "提交后会写入库存明细、库存流水，并重算 SKU 运营汇总。"}
             如需留置部分库存，请修改对应明细的推进数量，留置件数保留在当前状态等待后续合并发货。
           </DialogDescription>
         </DialogHeader>
@@ -244,13 +297,45 @@ export function TransitionDialog({
             <Badge className="bg-orange-50 text-orange-700">{nextState || "无下一状态"}</Badge>
           </div>
 
+          {needsShipmentBatch && (
+            <div className="space-y-3 rounded-lg border border-orange-100 bg-orange-50/50 p-3">
+              <div className="flex items-start gap-2">
+                <Truck className="mt-0.5 size-4 shrink-0 text-orange-500" />
+                <div>
+                  <p className="text-sm font-medium text-orange-800">本次发运信息</p>
+                  <p className="mt-0.5 text-xs text-orange-700">
+                    这些信息会写入头程物流批次，后续可按物流批次号或跟踪号查询。
+                  </p>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                <div>
+                  <label className="mb-1 block text-xs text-slate-500">物流批次号 *</label>
+                  <Input value={shipmentBatchNo} onChange={(event) => setShipmentBatchNo(event.target.value)} placeholder="SHIP-202606-001" />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs text-slate-500">承运商 *</label>
+                  <Input value={carrier} onChange={(event) => setCarrier(event.target.value)} placeholder="承运商名称" />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs text-slate-500">跟踪号</label>
+                  <Input value={trackingNo} onChange={(event) => setTrackingNo(event.target.value)} placeholder="物流跟踪号" />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs text-slate-500">发货日期</label>
+                  <Input type="date" value={shippedAt} onChange={(event) => setShippedAt(event.target.value)} />
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* 每条明细的推进数量 */}
           <div className="max-h-80 space-y-2 overflow-auto">
-            <div className="sticky top-0 z-10 grid grid-cols-[1.2fr_4rem_5.5rem_5.5rem_4rem] gap-3 rounded-md bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-500">
+            <div className={`sticky top-0 z-10 grid ${needsShipmentBatch ? "grid-cols-[1.2fr_4rem_5.5rem_4rem]" : "grid-cols-[1.2fr_4rem_5.5rem_5.5rem_4rem]"} gap-3 rounded-md bg-slate-100 px-3 py-1.5 text-xs font-medium text-slate-500`}>
               <span>SKU / 批次</span>
               <span className="text-right">现有</span>
-              <span className="text-right">推进数</span>
-              <span className="text-right">实收数</span>
+              <span className="text-right">{needsShipmentBatch ? "发运数" : "推进数"}</span>
+              {!needsShipmentBatch && <span className="text-right">实收数</span>}
               <span className="text-right">留置</span>
             </div>
             {details.map((detail) => {
@@ -266,7 +351,7 @@ export function TransitionDialog({
               return (
                 <div
                   key={detail.recordId}
-                  className="grid grid-cols-[1.2fr_4rem_5.5rem_5.5rem_4rem] items-center gap-3 rounded-md border border-slate-100 px-3 py-2"
+                  className={`grid ${needsShipmentBatch ? "grid-cols-[1.2fr_4rem_5.5rem_4rem]" : "grid-cols-[1.2fr_4rem_5.5rem_5.5rem_4rem]"} items-center gap-3 rounded-md border border-slate-100 px-3 py-2`}
                 >
                   <div className="min-w-0">
                     <p className="truncate text-sm font-medium text-slate-900">{sku || "未命名"}</p>
@@ -289,22 +374,24 @@ export function TransitionDialog({
                       className="h-8 text-sm text-right"
                     />
                   </div>
-                  <div>
-                    <Input
-                      type="number"
-                      min={0}
-                      max={advanceQty || currentQty}
-                      step={1}
-                      value={effectiveActualQuantities[detail.recordId] || "0"}
-                      onChange={(event) =>
-                        setActualQuantityOverrides((prev) => ({
-                          ...prev,
-                          [detail.recordId]: event.target.value,
-                        }))
-                      }
-                      className={`h-8 text-sm text-right ${difference > 0 ? "border-red-200 text-red-700" : ""}`}
-                    />
-                  </div>
+                  {!needsShipmentBatch && (
+                    <div>
+                      <Input
+                        type="number"
+                        min={0}
+                        max={advanceQty || currentQty}
+                        step={1}
+                        value={effectiveActualQuantities[detail.recordId] || "0"}
+                        onChange={(event) =>
+                          setActualQuantityOverrides((prev) => ({
+                            ...prev,
+                            [detail.recordId]: event.target.value,
+                          }))
+                        }
+                        className={`h-8 text-sm text-right ${difference > 0 ? "border-red-200 text-red-700" : ""}`}
+                      />
+                    </div>
+                  )}
                   <div className="flex items-center justify-end gap-1">
                     <span className={`text-sm ${isPartial ? "font-semibold text-orange-600" : "text-slate-400"}`}>
                       {remaining}
@@ -330,7 +417,7 @@ export function TransitionDialog({
             </div>
           )}
 
-          {totalDifferenceQty > 0 && (
+          {!needsShipmentBatch && totalDifferenceQty > 0 && (
             <div className="rounded-lg border border-red-100 bg-red-50 p-3 text-sm text-red-700">
               实收少于推进数的 {totalDifferenceQty} 件会自动生成库存异常，并先进入异常暂存。
             </div>
@@ -349,7 +436,9 @@ export function TransitionDialog({
           </Button>
           <Button onClick={submit} disabled={Boolean(invalidReason) || submitting}>
             {submitting && <Loader2 className="animate-spin" />}
-            {totalDifferenceQty > 0
+            {needsShipmentBatch
+              ? `发运 ${totalAdvanceQty} 件至橙联在途`
+              : totalDifferenceQty > 0
               ? `实收 ${totalActualQty} 件，异常 ${totalDifferenceQty} 件`
               : hasAnyPartial ? `推进 ${totalAdvanceQty} 件，留置 ${totalRemainingQty} 件` : "确认推进"}
           </Button>

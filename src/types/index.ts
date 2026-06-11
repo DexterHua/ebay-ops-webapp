@@ -124,9 +124,10 @@ export const STORES: Store[] = [
 ];
 
 export const MODULES = [
-  { id: "dashboard", name: "运营仪表盘", path: "/dashboard", description: "图表化数据看板，库存、销售与售后总览" },
+  { id: "dashboard", name: "运营仪表盘", path: "/dashboard", description: "图表化数据看板，库存、销售与售后总览", adminOnly: true },
   { id: "inventory", name: "库存监控", path: "/inventory", description: "实时库存监控与智能补货建议" },
   { id: "inventoryFlow", name: "库存流转", path: "/inventory-flow", description: "采购批次、头程物流与库存状态批量推进" },
+  { id: "skuDetails", name: "SKU 详情", path: "/sku-details", description: "按 SKU、品名、OEM 等字段查询商品与库存详情" },
   { id: "listing", name: "详情页生成", path: "/listing", description: "按店铺模板生成 eBay HTML 详情页" },
   { id: "reviews", name: "评论回复", path: "/reviews", description: "智能生成评价回复草稿" },
   { id: "dataEntry", name: "数据录入", path: "/data-entry", description: "飞书多维表格在线录入" },

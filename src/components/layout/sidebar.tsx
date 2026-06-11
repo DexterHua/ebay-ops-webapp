@@ -8,16 +8,17 @@ import { cn } from "@/lib/utils";
 import { MODULES } from "@/types";
 import { ModuleIcon } from "@/components/layout/module-icons";
 import { Activity, CircleHelp } from "lucide-react";
+import { getVisibleModulesForRole, isAccessRole, type AccessRole } from "@/lib/access-control";
 
 export function Sidebar() {
   const pathname = usePathname();
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [role, setRole] = useState<AccessRole | null>(null);
   const [larkStatus, setLarkStatus] = useState<"checking" | "readonly" | "connected" | "offline">("checking");
 
   useEffect(() => {
     fetch("/api/auth/me")
       .then((r) => r.json())
-      .then((d) => { if (d.isAdmin) setIsAdmin(true); })
+      .then((d) => { setRole(isAccessRole(d.role) ? d.role : null); })
       .catch(() => {});
 
     fetch("/api/lark/status")
@@ -26,7 +27,7 @@ export function Sidebar() {
       .catch(() => setLarkStatus("offline"));
   }, []);
 
-  const modules = MODULES.filter((m) => !(m as { adminOnly?: boolean }).adminOnly || isAdmin);
+  const modules = getVisibleModulesForRole(role, MODULES);
 
   return (
     <>

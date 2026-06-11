@@ -178,7 +178,7 @@ export async function listUsers(): Promise<Omit<User, "password">[]> {
 
 /** 新增用户 */
 export async function addUser(name: string, password: string, role: unknown = "operator"): Promise<{ ok: boolean; error?: string }> {
-  if (role !== "purchaser" && role !== "operator") {
+  if (!isUserRole(role)) {
     return { ok: false, error: "角色无效" };
   }
   return mutateUsers(users => {

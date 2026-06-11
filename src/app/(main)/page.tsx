@@ -5,7 +5,8 @@ import Link from "next/link";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { MODULES } from "@/types";
 import { ModuleIcon } from "@/components/layout/module-icons";
-import { ArrowUpRight, Boxes, PackageCheck, WalletCards } from "lucide-react";
+import { ArrowUpRight, Boxes, PackageCheck, TriangleAlert } from "lucide-react";
+import { getVisibleModulesForRole, isAccessRole, type AccessRole } from "@/lib/access-control";
 
 const EXTRA_DESC: Record<string, string> = {
   dashboard: "库存看板 · 销售趋势 · 售后分布 · 流程追踪 — 一张图看懂全局 →",
@@ -18,45 +19,40 @@ const EXTRA_DESC: Record<string, string> = {
 
 export default function Home() {
   const [userName, setUserName] = useState("");
-  const [stats, setStats] = useState({ sku: 0, pipeline: 0, pipelineValue: 0, totalValue: 0 });
+  const [role, setRole] = useState<AccessRole | null>(null);
+  const [stats, setStats] = useState({ sku: 0, pipeline: 0, sellableSku: 0, warningCount: 0 });
 
   useEffect(() => {
     Promise.all([
       fetch("/api/auth/me").then((r) => r.json()),
       fetch("/api/lark?table=sku&limit=200").then((r) => r.json()),
       fetch("/api/lark?table=summary&limit=200").then((r) => r.json()),
-    ]).then(([me, skus, summary]) => {
+      fetch("/api/lark?table=inventoryWarning&limit=200").then((r) => r.json()),
+    ]).then(([me, skus, summary, inventoryWarning]) => {
       if (me.name) setUserName(me.name);
+      setRole(isAccessRole(me.role) ? me.role : null);
       if (skus.success && summary.success) {
         const valid = (skus.data || []).filter((s: Record<string, unknown>) => s.SKU && s["中文品名"]);
-        const skuByCode = new Map(valid.map((s: Record<string, unknown>) => [String(s.SKU), s]));
         const snapshots = (summary.data || []) as Array<Record<string, unknown>>;
+        const warningRows = inventoryWarning.success ? (inventoryWarning.data || []) as Array<Record<string, unknown>> : [];
 
         // 在途库存 = 国内集货仓 + 橙联在途（已离开公司但未到可售状态的货物）
         const pipeline = snapshots.reduce((sum, s) =>
           sum + (Number(s["国内集货仓"]) || 0) + (Number(s["橙联在途"]) || 0), 0);
 
-        // 计算全部库存总货值（本地 + 国内集货仓 + 橙联在途 + 橙联可售）
-        const totalVal = snapshots.reduce((sum, s) => {
-          const sku = skuByCode.get(String(s.SKU)) as Record<string, unknown> | undefined;
-          const price = Number(sku?.["采购价"]) || 0;
-          const qty = (Number(s["本地库存"]) || 0) + (Number(s["国内集货仓"]) || 0)
-            + (Number(s["橙联在途"]) || 0) + (Number(s["橙联可售"]) || 0);
-          return sum + price * qty;
-        }, 0);
+        const sellableSku = snapshots.filter((s) => (Number(s["橙联可售"]) || 0) > 0).length;
+        const warningCount = warningRows.filter((row) => {
+          const recordType = String(row["记录类型"] || "").trim();
+          const status = String(row["处理状态"] || "").trim();
+          return recordType === "库存预警" && status !== "已关闭";
+        }).length;
 
-        // 在途货值 = 国内集货仓 + 橙联在途 的价值
-        const pipelineVal = snapshots.reduce((sum, s) => {
-          const sku = skuByCode.get(String(s.SKU)) as Record<string, unknown> | undefined;
-          const price = Number(sku?.["采购价"]) || 0;
-          const qty = (Number(s["国内集货仓"]) || 0) + (Number(s["橙联在途"]) || 0);
-          return sum + price * qty;
-        }, 0);
-
-        setStats({ sku: valid.length, pipeline, pipelineValue: pipelineVal, totalValue: totalVal });
+        setStats({ sku: valid.length, pipeline, sellableSku, warningCount });
       }
     }).catch(() => {});
   }, []);
+
+  const modules = getVisibleModulesForRole(role, MODULES);
 
   return (
     <div className="app-page max-w-6xl">
@@ -69,7 +65,7 @@ export default function Home() {
         <p className="page-description">
           NewPower · VelocityGear · TitanRig 运营中 &nbsp;|&nbsp;
           {stats.sku > 0
-            ? `${stats.sku} SKU · ${stats.pipeline.toLocaleString()} 件在途 · 总货值 ¥${(stats.totalValue / 10000).toFixed(1)}万`
+            ? `${stats.sku} SKU · ${stats.pipeline.toLocaleString()} 件在途 · ${stats.warningCount} 条库存预警`
             : <span className="inline-block h-4 w-64 animate-pulse rounded-md bg-muted align-middle" />}
         </p>
       </div>
@@ -77,14 +73,14 @@ export default function Home() {
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
         <SummaryCard icon={Boxes} label="有效 SKU" value={stats.sku.toLocaleString()} />
         <SummaryCard icon={PackageCheck} label="在途库存" value={`${stats.pipeline.toLocaleString()} 件`} />
-        <SummaryCard icon={WalletCards} label="在途货值" value={`¥${(stats.pipelineValue / 10000).toFixed(1)} 万`} />
-        <SummaryCard icon={WalletCards} label="总货值" value={`¥${(stats.totalValue / 10000).toFixed(1)} 万`} />
+        <SummaryCard icon={PackageCheck} label="橙联可售 SKU" value={`${stats.sellableSku.toLocaleString()} 个`} />
+        <SummaryCard icon={TriangleAlert} label="库存预警" value={`${stats.warningCount.toLocaleString()} 条`} />
       </div>
 
       {/* 快速入口 */}
       <p className="page-kicker pt-2">Modules</p>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        {MODULES.map((mod) => (
+        {modules.map((mod) => (
           <Link key={mod.id} href={mod.path}>
             <Card className="group h-full cursor-pointer border-slate-200 transition-all hover:-translate-y-0.5 hover:border-orange-200 hover:shadow-[0_14px_30px_rgba(15,23,42,0.08)]">
               <CardHeader className="pb-2">

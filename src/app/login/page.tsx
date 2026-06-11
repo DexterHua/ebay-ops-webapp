@@ -17,7 +17,10 @@ export default function LoginPage() {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim() || !password.trim()) {
+    const normalizedName = name.trim();
+    const normalizedPassword = password.trim();
+
+    if (!normalizedName || !normalizedPassword) {
       toast.error("请输入姓名和密码");
       return;
     }
@@ -27,19 +30,22 @@ export default function LoginPage() {
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: name.trim(), password }),
+        body: JSON.stringify({ name: normalizedName, password: normalizedPassword }),
       });
-      const json = await res.json();
+      const text = await res.text();
+      const json = text ? JSON.parse(text) as { ok?: boolean; name?: string; error?: string } : {};
 
-      if (json.ok) {
+      if (res.ok && json.ok) {
         toast.success(`欢迎，${json.name}`);
         router.push("/");
         router.refresh();
       } else {
-        toast.error(json.error || "登录失败");
+        toast.error(json.error || `登录失败（${res.status}）`);
       }
-    } catch {
-      toast.error("服务异常，请重试");
+    } catch (error) {
+      toast.error("服务异常，请重试", {
+        description: error instanceof Error ? error.message : "请刷新页面后再试",
+      });
     }
     setLoading(false);
   };

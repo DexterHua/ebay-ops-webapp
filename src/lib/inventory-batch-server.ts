@@ -535,6 +535,11 @@ function moveFromBindDetailId(bindDetailId: string, transactionId: string): stri
   return `${bindDetailId}-MOVE-${transactionId}`;
 }
 
+function isShipmentRegistryPermissionError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.includes("RolePermNotAllow") || message.includes("1254302");
+}
+
 export async function createAndBindShipment(
   repo: InventoryBatchRepository,
   input: ShipmentBatchInput,
@@ -543,15 +548,21 @@ export async function createAndBindShipment(
   const transaction = await beginTransaction(repo, input.transactionId, digest);
   if (transaction.replayed) return { transactionId: input.transactionId, replayed: true };
 
-  await repo.upsertShipmentBatch(input.shipmentBatchNo, {
-    物流批次号: input.shipmentBatchNo,
-    承运商: input.carrier,
-    跟踪号: input.trackingNo,
-    发货日期: input.shippedAt,
-    批次状态: "处理中",
-    操作人: input.operator,
-    创建时间: input.now,
-  });
+  try {
+    await repo.upsertShipmentBatch(input.shipmentBatchNo, {
+      物流批次号: input.shipmentBatchNo,
+      承运商: input.carrier,
+      跟踪号: input.trackingNo,
+      发货日期: input.shippedAt,
+      批次状态: "处理中",
+      操作人: input.operator,
+      创建时间: input.now,
+    });
+  } catch (error) {
+    if (input.bindings.length === 0 || !isShipmentRegistryPermissionError(error)) {
+      throw error;
+    }
+  }
 
   const touchedSkus = new Set<string>();
   const boundDetailRefs: Array<{ detailId: string; sku: string }> = [];

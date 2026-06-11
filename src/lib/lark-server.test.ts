@@ -4,6 +4,8 @@ import {
   calculateSalesSummaryPatch,
   calculateStockSummaryPatch,
   createLarkRecords,
+  deleteLarkRecord,
+  downloadLarkMedia,
   findLarkRecordByText,
   findUniqueLarkRecordByText,
   findUniqueSummaryRecordBySku,
@@ -11,6 +13,8 @@ import {
   listLarkRecords,
   parseStockSummaryFlow,
   sendLarkMarkdownMessage,
+  sendLarkTextToUser,
+  uploadLarkRecordAttachment,
   updateLarkRecord,
   updateLarkRecords,
 } from "@/lib/lark-server";
@@ -101,13 +105,84 @@ describe("飞书写入开关", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("关闭写入时拒绝发送用户私聊消息，且不请求 OpenAPI", async () => {
+    vi.stubEnv("LARK_APP_ID", "app-id");
+    vi.stubEnv("LARK_APP_SECRET", "app-secret");
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(() => {
+      throw new Error("测试禁止真实网络请求");
+    });
+
+    await expect(sendLarkTextToUser("ou_user", "hello")).rejects.toThrow("飞书写入已关闭");
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it("空数组新增直接返回，不检查写入开关", async () => {
     await expect(createLarkRecords("sku", [])).resolves.toEqual([]);
     expect(execFileMock).not.toHaveBeenCalled();
   });
 });
 
+describe("飞书用户消息发送", () => {
+  it("本地 CLI 按 open_id 给用户发送文本消息", async () => {
+    vi.stubEnv("LARK_WRITE_ENABLED", "true");
+    vi.stubEnv("LARK_APP_ID", "");
+    vi.stubEnv("LARK_APP_SECRET", "");
+    execFileMock.mockImplementation(replyWithCliJson({ ok: true, data: { message_id: "om-1" } }));
+
+    await expect(sendLarkTextToUser("ou_user", "新增报销")).resolves.toBe("om-1");
+
+    const cliArgs = execFileMock.mock.calls[0][1] as string[];
+    expect(cliArgs).toEqual([
+      "im", "+messages-send", "--user-id", "ou_user", "--text", "新增报销", "--as", "user",
+    ]);
+  });
+});
+
 describe("本地飞书分页", () => {
+  it("OpenAPI 读取记录遇到角色权限不足时降级到本地 CLI 用户身份", async () => {
+    vi.stubEnv("LARK_BASE_TOKEN", "base-token");
+    vi.stubEnv("LARK_TABLE_SKU", "sku-table");
+    vi.stubEnv("LARK_APP_ID", "app-id");
+    vi.stubEnv("LARK_APP_SECRET", "app-secret");
+    vi.stubEnv("LARK_CLI_PATH", "/usr/local/bin/lark-cli");
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.includes("/auth/v3/tenant_access_token/internal")) {
+        return new Response(JSON.stringify({
+          code: 0,
+          tenant_access_token: "tenant-token",
+          expire: 7200,
+        }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      return new Response(JSON.stringify({
+        code: 1254302,
+        msg: "RolePermNotAllow",
+      }), { status: 200, headers: { "Content-Type": "application/json" } });
+    });
+    execFileMock.mockImplementation((...args: unknown[]) => {
+      const cliArgs = args[1] as string[];
+      return cliArgs.includes("+field-list")
+        ? replyWithCliJson({ data: { fields: [{ id: "fld-sku", name: "SKU" }] } })(...args)
+        : replyWithCliJson({
+            data: {
+              data: [["SKU-1"]],
+              field_id_list: ["fld-sku"],
+              record_id_list: ["record-1"],
+              has_more: false,
+            },
+          })(...args);
+    });
+
+    const result = await listLarkRecords("sku", 10);
+
+    expect(fetchMock).toHaveBeenCalled();
+    expect(result).toEqual({
+      records: [{ recordId: "record-1", fields: { SKU: "SKU-1" } }],
+      hasMore: false,
+    });
+    expect(execFileMock.mock.calls.map((call) => (call[1] as string[])[1])).toEqual(["+field-list", "+record-list"]);
+  });
+
   it("按剩余读取额度限制 CLI 单页数量，并保留截断标记", async () => {
     vi.stubEnv("LARK_BASE_TOKEN", "base-token");
     vi.stubEnv("LARK_TABLE_SKU", "sku-table");
@@ -200,6 +275,149 @@ describe("飞书临时 JSON 文件", () => {
       flag: "wx",
     });
     expect(unlinkSyncMock).toHaveBeenCalledWith(filename);
+  });
+
+  it("OpenAPI 新增记录遇到角色权限不足时降级到本地 CLI 用户身份", async () => {
+    vi.stubEnv("LARK_WRITE_ENABLED", "true");
+    vi.stubEnv("LARK_BASE_TOKEN", "base-token");
+    vi.stubEnv("LARK_TABLE_SKU", "sku-table");
+    vi.stubEnv("LARK_APP_ID", "app-id");
+    vi.stubEnv("LARK_APP_SECRET", "app-secret");
+    vi.stubEnv("LARK_CLI_PATH", "/usr/local/bin/lark-cli");
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.includes("/auth/v3/tenant_access_token/internal")) {
+        return new Response(JSON.stringify({
+          code: 0,
+          tenant_access_token: "tenant-token",
+          expire: 7200,
+        }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      return new Response(JSON.stringify({
+        code: 1254302,
+        msg: "RolePermNotAllow",
+      }), { status: 200, headers: { "Content-Type": "application/json" } });
+    });
+    execFileMock.mockImplementation(replyWithCliJson({ ok: true, data: { record_id_list: ["cli-rec-1"] } }));
+
+    await expect(createLarkRecords("sku", [{ SKU: "SKU-1" }])).resolves.toEqual(["cli-rec-1"]);
+
+    expect(fetchMock).toHaveBeenCalled();
+    expect(execFileMock).toHaveBeenCalledTimes(1);
+    expect(execFileMock.mock.calls[0][0]).toBe("/usr/local/bin/lark-cli");
+    expect(execFileMock.mock.calls[0][1]).toContain("+record-batch-create");
+  });
+
+  it("OpenAPI 更新记录遇到角色权限不足时降级到本地 CLI 用户身份", async () => {
+    vi.stubEnv("LARK_WRITE_ENABLED", "true");
+    vi.stubEnv("LARK_BASE_TOKEN", "base-token");
+    vi.stubEnv("LARK_TABLE_SKU", "sku-table");
+    vi.stubEnv("LARK_APP_ID", "app-id");
+    vi.stubEnv("LARK_APP_SECRET", "app-secret");
+    vi.stubEnv("LARK_CLI_PATH", "/usr/local/bin/lark-cli");
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.includes("/auth/v3/tenant_access_token/internal")) {
+        return new Response(JSON.stringify({
+          code: 0,
+          tenant_access_token: "tenant-token",
+          expire: 7200,
+        }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      return new Response(JSON.stringify({
+        code: 1254302,
+        msg: "RolePermNotAllow",
+      }), { status: 200, headers: { "Content-Type": "application/json" } });
+    });
+    execFileMock.mockImplementation(replyWithCliJson({ ok: true }));
+
+    await expect(updateLarkRecord("sku", "record-1", { SKU: "SKU-1" })).resolves.toBeUndefined();
+
+    expect(fetchMock).toHaveBeenCalled();
+    expect(execFileMock).toHaveBeenCalledTimes(1);
+    expect(execFileMock.mock.calls[0][0]).toBe("/usr/local/bin/lark-cli");
+    expect(execFileMock.mock.calls[0][1]).toContain("+record-upsert");
+  });
+});
+
+describe("飞书附件上传", () => {
+  it("上传文件时在文件所在目录执行 CLI，并传相对文件路径", async () => {
+    vi.stubEnv("LARK_WRITE_ENABLED", "true");
+    vi.stubEnv("LARK_BASE_FINANCE", "finance-base");
+    vi.stubEnv("LARK_TABLE_FINANCE", "finance-table");
+    vi.stubEnv("LARK_APP_ID", "");
+    vi.stubEnv("LARK_APP_SECRET", "");
+    execFileMock.mockImplementation(replyWithCliJson({ ok: true }));
+
+    await uploadLarkRecordAttachment({
+      table: "finance",
+      recordId: "record-1",
+      field: "发票及付款记录",
+      filePath: "/private/tmp/finance-vouchers-abc/1-voucher.png",
+      name: "voucher.png",
+    });
+
+    const cliArgs = execFileMock.mock.calls[0][1] as string[];
+    const cliOptions = execFileMock.mock.calls[0][2] as { cwd?: string };
+    expect(cliOptions.cwd).toBe("/private/tmp/finance-vouchers-abc");
+    expect(cliArgs[cliArgs.indexOf("--file") + 1]).toBe("./1-voucher.png");
+  });
+});
+
+describe("飞书记录删除", () => {
+  it("本地 CLI 删除记录时带确认参数", async () => {
+    vi.stubEnv("LARK_WRITE_ENABLED", "true");
+    vi.stubEnv("LARK_BASE_FINANCE", "finance-base");
+    vi.stubEnv("LARK_TABLE_FINANCE", "finance-table");
+    vi.stubEnv("LARK_APP_ID", "");
+    vi.stubEnv("LARK_APP_SECRET", "");
+    execFileMock.mockImplementation(replyWithCliJson({ ok: true }));
+
+    await deleteLarkRecord("finance", "rec-1");
+
+    expect(execFileMock.mock.calls[0][1]).toEqual([
+      "base", "+record-delete",
+      "--base-token", "finance-base",
+      "--table-id", "finance-table",
+      "--record-id", "rec-1",
+      "--yes",
+      "--as", "user",
+    ]);
+  });
+});
+
+describe("飞书素材下载", () => {
+  it("使用 tenant token 下载素材二进制内容", async () => {
+    vi.stubEnv("LARK_APP_ID", "app-id");
+    vi.stubEnv("LARK_APP_SECRET", "app-secret");
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.includes("/auth/v3/tenant_access_token/internal")) {
+        return new Response(JSON.stringify({
+          code: 0,
+          tenant_access_token: "tenant-token",
+          expire: 7200,
+        }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      return new Response(new Uint8Array([1, 2, 3]), {
+        status: 200,
+        headers: {
+          "Content-Type": "image/png",
+          "Content-Disposition": "attachment; filename=\"voucher.png\"",
+        },
+      });
+    });
+
+    const result = await downloadLarkMedia("box-token");
+
+    expect(new Uint8Array(result.data)).toEqual(new Uint8Array([1, 2, 3]));
+    expect(result.contentType).toBe("image/png");
+    expect(result.filename).toBe("voucher.png");
+    const mediaCall = fetchMock.mock.calls.find((call) => String(call[0]).includes("/drive/v1/medias/box-token/download"));
+    expect(mediaCall?.[0]).toBe("https://open.feishu.cn/open-apis/drive/v1/medias/box-token/download");
+    expect(mediaCall?.[1]).toMatchObject({
+      headers: { Authorization: "Bearer tenant-token" },
+    });
   });
 });
 

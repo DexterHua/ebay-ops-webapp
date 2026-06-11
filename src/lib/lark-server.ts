@@ -77,6 +77,15 @@ function hasLarkOpenApiCredentials(): boolean {
   return Boolean(process.env.LARK_APP_ID?.trim() && process.env.LARK_APP_SECRET?.trim());
 }
 
+function canFallbackToLocalLarkCli(): boolean {
+  return Boolean(process.env.LARK_CLI_PATH?.trim());
+}
+
+function isLarkOpenApiRolePermissionError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.includes("RolePermNotAllow") || message.includes("1254302");
+}
+
 async function getTenantAccessToken(): Promise<string> {
   if (tenantTokenCache && tenantTokenCache.expiresAt > Date.now()) return tenantTokenCache.token;
 
@@ -210,21 +219,26 @@ export async function listLarkRecords(table: LarkTable, maxRecords = getLarkRead
   const records: LarkRecord[] = [];
 
   if (hasLarkOpenApiCredentials()) {
-    let pageToken = "";
-    let hasMore = false;
-    do {
-      const params = new URLSearchParams({ page_size: String(Math.min(500, maxRecords - records.length || 1)) });
-      if (pageToken) params.set("page_token", pageToken);
-      const data = await larkOpenApi<{
-        items?: Array<{ record_id: string; fields: Record<string, unknown> }>;
-        has_more?: boolean;
-        page_token?: string;
-      }>(`/open-apis/bitable/v1/apps/${baseToken}/tables/${tableId}/records?${params}`);
-      records.push(...(data.items || []).map((item) => ({ recordId: item.record_id, fields: item.fields })));
-      hasMore = (data.has_more || false) || records.length > maxRecords;
-      pageToken = data.page_token || "";
-    } while (hasMore && pageToken && records.length < maxRecords);
-    return { records: records.slice(0, maxRecords), hasMore };
+    try {
+      let pageToken = "";
+      let hasMore = false;
+      do {
+        const params = new URLSearchParams({ page_size: String(Math.min(500, maxRecords - records.length || 1)) });
+        if (pageToken) params.set("page_token", pageToken);
+        const data = await larkOpenApi<{
+          items?: Array<{ record_id: string; fields: Record<string, unknown> }>;
+          has_more?: boolean;
+          page_token?: string;
+        }>(`/open-apis/bitable/v1/apps/${baseToken}/tables/${tableId}/records?${params}`);
+        records.push(...(data.items || []).map((item) => ({ recordId: item.record_id, fields: item.fields })));
+        hasMore = (data.has_more || false) || records.length > maxRecords;
+        pageToken = data.page_token || "";
+      } while (hasMore && pageToken && records.length < maxRecords);
+      return { records: records.slice(0, maxRecords), hasMore };
+    } catch (error) {
+      if (!canFallbackToLocalLarkCli() || !isLarkOpenApiRolePermissionError(error)) throw error;
+      records.length = 0;
+    }
   }
 
   const fieldMap = await getLocalFieldMap(baseToken, tableId);
@@ -272,11 +286,15 @@ export async function createLarkRecords(table: LarkTable, records: Array<Record<
   const tableId = getLarkTableId(table);
 
   if (hasLarkOpenApiCredentials()) {
-    const data = await larkOpenApi<{ records?: Array<{ record_id: string }> }>(
-      `/open-apis/bitable/v1/apps/${baseToken}/tables/${tableId}/records/batch_create`,
-      { method: "POST", body: { records: records.map((fields) => ({ fields })) } },
-    );
-    return (data.records || []).map((record) => record.record_id);
+    try {
+      const data = await larkOpenApi<{ records?: Array<{ record_id: string }> }>(
+        `/open-apis/bitable/v1/apps/${baseToken}/tables/${tableId}/records/batch_create`,
+        { method: "POST", body: { records: records.map((fields) => ({ fields })) } },
+      );
+      return (data.records || []).map((record) => record.record_id);
+    } catch (error) {
+      if (!canFallbackToLocalLarkCli() || !isLarkOpenApiRolePermissionError(error)) throw error;
+    }
   }
 
   const fields = [...new Set(records.flatMap((record) => Object.keys(record)))];
@@ -311,19 +329,50 @@ export async function uploadLarkRecordAttachment(input: {
   assertLarkWriteEnabled();
   const baseToken = getLarkBaseTokenForTable(input.table);
   const tableId = getLarkTableId(input.table);
+  const uploadDir = dirname(input.filePath);
+  const uploadFilename = basename(input.filePath);
   const args = [
     "base", "+record-upload-attachment",
     "--base-token", baseToken,
     "--table-id", tableId,
     "--record-id", input.recordId,
     "--field-id", input.field,
-    "--file", input.filePath,
-    "--name", input.name || basename(input.filePath),
+    "--file", `./${uploadFilename}`,
+    "--name", input.name || uploadFilename,
     "--as", "user",
   ];
-  const { stdout } = await runLarkCli(args);
+  const { stdout } = await runLarkCli(args, { cwd: uploadDir });
   const result = JSON.parse(stdout) as { ok?: boolean; error?: { message?: string } };
   if (!result.ok) throw new Error(result.error?.message || "飞书附件上传失败");
+}
+
+/** 删除一条多维表格记录。 */
+export async function deleteLarkRecord(table: LarkTable, recordId: string): Promise<void> {
+  assertLarkWriteEnabled();
+  const baseToken = getLarkBaseTokenForTable(table);
+  const tableId = getLarkTableId(table);
+  if (hasLarkOpenApiCredentials()) {
+    try {
+      await larkOpenApi(
+        `/open-apis/bitable/v1/apps/${baseToken}/tables/${tableId}/records/${recordId}`,
+        { method: "DELETE" },
+      );
+      return;
+    } catch (error) {
+      if (!canFallbackToLocalLarkCli() || !isLarkOpenApiRolePermissionError(error)) throw error;
+    }
+  }
+
+  const { stdout } = await runLarkCli([
+    "base", "+record-delete",
+    "--base-token", baseToken,
+    "--table-id", tableId,
+    "--record-id", recordId,
+    "--yes",
+    "--as", "user",
+  ]);
+  const result = JSON.parse(stdout) as { ok?: boolean; error?: { message?: string } };
+  if (!result.ok) throw new Error(result.error?.message || "飞书记录删除失败");
 }
 
 /** 更新一条多维表格记录。 */
@@ -332,11 +381,15 @@ export async function updateLarkRecord(table: LarkTable, recordId: string, field
   const baseToken = getLarkBaseTokenForTable(table);
   const tableId = getLarkTableId(table);
   if (hasLarkOpenApiCredentials()) {
-    await larkOpenApi(
-      `/open-apis/bitable/v1/apps/${baseToken}/tables/${tableId}/records/${recordId}`,
-      { method: "PUT", body: { fields } },
-    );
-    return;
+    try {
+      await larkOpenApi(
+        `/open-apis/bitable/v1/apps/${baseToken}/tables/${tableId}/records/${recordId}`,
+        { method: "PUT", body: { fields } },
+      );
+      return;
+    } catch (error) {
+      if (!canFallbackToLocalLarkCli() || !isLarkOpenApiRolePermissionError(error)) throw error;
+    }
   }
 
   const temp = withTmpJson("lark_update", fields);
@@ -565,6 +618,60 @@ export async function sendLarkMarkdownMessage(chatId: string, text: string): Pro
 
   const { stdout } = await runLarkCli([
     "im", "+messages-send", "--chat-id", chatId, "--markdown", text, "--as", "user",
+  ]);
+  const result = JSON.parse(stdout) as { ok?: boolean; data?: { message_id?: string }; error?: { message?: string } };
+  if (result.ok === false) throw new Error(result.error?.message || "飞书消息发送失败");
+  return result.data?.message_id;
+}
+
+function filenameFromContentDisposition(value: string): string | undefined {
+  const utf8Match = value.match(/filename\*=UTF-8''([^;]+)/i);
+  if (utf8Match?.[1]) return decodeURIComponent(utf8Match[1]);
+  const asciiMatch = value.match(/filename="?([^";]+)"?/i);
+  return asciiMatch?.[1];
+}
+
+/** 下载飞书素材二进制内容，用于服务端代理附件查看。 */
+export async function downloadLarkMedia(fileToken: string): Promise<{
+  data: ArrayBuffer;
+  contentType: string;
+  filename?: string;
+}> {
+  const response = await fetch(`https://open.feishu.cn/open-apis/drive/v1/medias/${fileToken}/download`, {
+    headers: { Authorization: `Bearer ${await getTenantAccessToken()}` },
+  });
+  if (!response.ok) {
+    let message = response.statusText;
+    try {
+      const result = await response.json() as { msg?: string; error?: { message?: string } };
+      message = result.msg || result.error?.message || message;
+    } catch {
+      // 下载接口失败时未必返回 JSON。
+    }
+    throw new Error(`飞书附件下载失败（${response.status}）：${message}`);
+  }
+
+  const contentDisposition = response.headers.get("content-disposition") || "";
+  return {
+    data: await response.arrayBuffer(),
+    contentType: response.headers.get("content-type") || "application/octet-stream",
+    filename: filenameFromContentDisposition(contentDisposition),
+  };
+}
+
+/** 发送用户私聊文本消息。 */
+export async function sendLarkTextToUser(userId: string, text: string): Promise<string | undefined> {
+  assertLarkWriteEnabled();
+  if (hasLarkOpenApiCredentials()) {
+    const data = await larkOpenApi<{ message_id?: string }>(
+      "/open-apis/im/v1/messages?receive_id_type=open_id",
+      { method: "POST", body: { receive_id: userId, msg_type: "text", content: JSON.stringify({ text }) } },
+    );
+    return data.message_id;
+  }
+
+  const { stdout } = await runLarkCli([
+    "im", "+messages-send", "--user-id", userId, "--text", text, "--as", "user",
   ]);
   const result = JSON.parse(stdout) as { ok?: boolean; data?: { message_id?: string }; error?: { message?: string } };
   if (result.ok === false) throw new Error(result.error?.message || "飞书消息发送失败");
