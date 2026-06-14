@@ -62,6 +62,7 @@ afterEach(() => {
 
 describe("飞书表格环境变量", () => {
   it.each([
+    ["sourcing", "LARK_TABLE_SOURCING"],
     ["purchaseBatch", "LARK_TABLE_PURCHASE_BATCH"],
     ["shipmentBatch", "LARK_TABLE_SHIPMENT_BATCH"],
     ["inventoryDetail", "LARK_TABLE_INVENTORY_DETAIL"],

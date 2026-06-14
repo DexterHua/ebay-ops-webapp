@@ -15,6 +15,7 @@ const TABLE_ENV_KEYS = {
   competitors: "LARK_TABLE_COMPETITORS",
   replenish: "LARK_TABLE_REPLENISH",
   listing: "LARK_TABLE_LISTING",
+  sourcing: "LARK_TABLE_SOURCING",
   flow: "LARK_TABLE_FLOW",
   strategy: "LARK_TABLE_STOCK_STRATEGY",
   summary: "LARK_TABLE_SKU_SUMMARY",
