@@ -1,31 +1,34 @@
 import { NextRequest, NextResponse } from "next/server";
 import { SignJWT } from "jose";
 import { cookies } from "next/headers";
-import { verifyUser, isAdmin } from "@/lib/users";
-
-const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET || "solid-ecom-ops-secret-key-2025");
+import { getUserRole, getUserSessionVersion, verifyUser } from "@/lib/users";
+import { getJwtSecret } from "@/lib/auth-config";
 
 export async function POST(request: NextRequest) {
   try {
     const { name, password } = await request.json();
+    const normalizedName = String(name || "").trim();
+    const normalizedPassword = String(password || "").trim();
 
-    if (!name || !password) {
+    if (!normalizedName || !normalizedPassword) {
       return NextResponse.json({ ok: false, error: "请输入姓名和密码" }, { status: 400 });
     }
 
-    const u = verifyUser(name, password);
+    const u = await verifyUser(normalizedName, normalizedPassword);
     if (!u) {
       return NextResponse.json({ ok: false, error: "姓名或密码不正确" }, { status: 401 });
     }
 
-    const admin = isAdmin(name);
+    const role = getUserRole(u);
+    const sessionVersion = getUserSessionVersion(u);
+    const admin = role === "admin";
 
-    // 签发 JWT，含 isAdmin 标记
-    const token = await new SignJWT({ name: u.name, isAdmin: admin })
+    // 签发 JWT，服务端仍会以持久化账号信息为准重新校验。
+    const token = await new SignJWT({ name: u.name, isAdmin: admin, role, sessionVersion })
       .setProtectedHeader({ alg: "HS256" })
       .setIssuedAt()
       .setExpirationTime("7d")
-      .sign(JWT_SECRET);
+      .sign(getJwtSecret());
 
     const cookieStore = await cookies();
     cookieStore.set("auth_token", token, {
@@ -36,8 +39,9 @@ export async function POST(request: NextRequest) {
       path: "/",
     });
 
-    return NextResponse.json({ ok: true, name: u.name, isAdmin: admin });
-  } catch {
+    return NextResponse.json({ ok: true, name: u.name, isAdmin: admin, role });
+  } catch (error) {
+    console.error("[auth/login] 登录服务异常", error);
     return NextResponse.json({ ok: false, error: "服务错误" }, { status: 500 });
   }
 }

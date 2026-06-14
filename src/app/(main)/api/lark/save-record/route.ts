@@ -3,68 +3,85 @@
 // ============================================================
 
 import { NextRequest, NextResponse } from "next/server";
-import { exec } from "child_process";
-import { writeFileSync, unlinkSync } from "fs";
-import { join } from "path";
-import { promisify } from "util";
+import {
+  assertLarkWriteEnabled,
+  createLarkRecords,
+  LarkTable,
+  resolveLarkUserReference,
+  syncSalesSummary,
+  syncStockSummaryFromFlow,
+} from "@/lib/lark-server";
 
-const execAsync = promisify(exec);
-const LARK_CLI = "/Users/chequan/.nvm/versions/node/v24.15.0/bin/lark-cli";
-const EXTRA_PATH = "/Users/chequan/.nvm/versions/node/v24.15.0/bin";
-const BASE_TOKEN = "RveVbcouwa06KcsDXcIc45AInkg";
-
-const TABLE_MAP: Record<string, string> = {
-  skuMaster: "tbl6w66MyySgO75J",    // 01_SKU主数据
-  sales: "tbl65ySLOb7YOXN1",        // 07_销售日报
-  stockFlow: "tbl7aa7a0MaSsUSr",    // 02_库存流水
-  issues: "tbl3cCCTik5VVO7I",       // 08_客服售后异常
-  competitors: "tbl4QQLO4Exf0ErU",  // 09_竞品价格监控
-  replenish: "tbl1PtyuYfzXe2dt",    // 10_补货采购建议
-  sourcing: "tblqnSLNGWFURtQq",     // 16_选品池
+const TABLE_MAP: Record<string, LarkTable> = {
+  skuMaster: "sku",
+  sales: "sales",
+  stockFlow: "stockFlow",
+  issues: "issues",
+  competitors: "competitors",
+  replenish: "replenish",
+  sourcing: "sourcing",
 };
+
+const DATE_FIELDS: Partial<Record<LarkTable, string[]>> = {
+  sales: ["日期"],
+  stockFlow: ["日期"],
+  issues: ["创建日期"],
+  competitors: ["记录日期"],
+  sourcing: ["登记时间", "初选时间", "询价时间"],
+};
+
+function normalizeDateTime(value: unknown): unknown {
+  if (typeof value === "number") return value;
+  if (typeof value !== "string") return value;
+  const normalized = value.trim().replace(/\//g, "-");
+  const timestamp = Date.parse(
+    /^\d{4}-\d{2}-\d{2}$/.test(normalized)
+      ? `${normalized}T00:00:00+08:00`
+      : normalized,
+  );
+  return Number.isNaN(timestamp) ? value : timestamp;
+}
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const CWD = /* turbopackIgnore: true */ process.cwd();
-
 export async function POST(request: NextRequest) {
-  let tmpFile = "";
   try {
+    assertLarkWriteEnabled();
     const body = await request.json();
     const { table, fields } = body;
 
-    if (!table || !fields) {
+    if (!table || !fields || typeof fields !== "object" || Array.isArray(fields)) {
       return NextResponse.json({ success: false, error: "缺少 table 或 fields" }, { status: 400 });
     }
 
-    const tableId = TABLE_MAP[table];
-    if (!tableId) {
+    const tableKey = TABLE_MAP[table];
+    if (!tableKey) {
       return NextResponse.json({ success: false, error: `未知表: ${table}，可选: ${Object.keys(TABLE_MAP).join(", ")}` }, { status: 400 });
     }
 
-    // 将 fields 对象转为 lark-cli record-batch-create 格式
-    const fieldNames = Object.keys(fields);
-    const row = fieldNames.map((fn) => fields[fn] ?? null);
-    const payload = { fields: fieldNames, rows: [row] };
-
-    tmpFile = `_save_${table}_${Date.now()}.json`;
-    writeFileSync(join(CWD, tmpFile), JSON.stringify(payload));
-
-    const { stdout } = await execAsync(
-      `${LARK_CLI} base +record-batch-create --base-token ${BASE_TOKEN} --table-id ${tableId} --json @${tmpFile} --as user`,
-      { maxBuffer: 5 * 1024 * 1024, cwd: CWD, env: { ...process.env, PATH: `${process.env.PATH}:${EXTRA_PATH}` } },
+    const normalizedFields = Object.fromEntries(
+      Object.entries(fields).filter(([, value]) => value !== ""),
     );
-
-    unlinkSync(join(CWD, tmpFile));
-    const result = JSON.parse(stdout);
-
-    if (result.ok) {
-      return NextResponse.json({ success: true, table, recordIds: result.data?.record_id_list || [] });
+    if (table === "skuMaster" && typeof normalizedFields.负责人 === "string") {
+      normalizedFields.负责人 = await resolveLarkUserReference(normalizedFields.负责人);
     }
-    return NextResponse.json({ success: false, error: result.error?.message || "写入失败" }, { status: 500 });
+    for (const field of DATE_FIELDS[tableKey] || []) {
+      if (field in normalizedFields) normalizedFields[field] = normalizeDateTime(normalizedFields[field]);
+    }
+
+    const recordIds = await createLarkRecords(tableKey, [normalizedFields]);
+    let warning: string | undefined;
+    try {
+      if (tableKey === "stockFlow") await syncStockSummaryFromFlow(normalizedFields);
+      if (tableKey === "sales") await syncSalesSummary(String(normalizedFields.SKU || ""));
+    } catch (error) {
+      warning = `业务记录已保存，但运营汇总同步失败：${(error as Error).message}`;
+      console.error("[lark] 汇总同步失败:", warning);
+    }
+
+    return NextResponse.json({ success: true, table, recordIds, warning });
   } catch (error) {
-    if (tmpFile) { try { unlinkSync(join(CWD, tmpFile)); } catch { /* ok */ } }
     return NextResponse.json({ success: false, error: (error as Error).message }, { status: 500 });
   }
 }

@@ -2,74 +2,127 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { MODULES } from "@/types";
+import { ModuleIcon } from "@/components/layout/module-icons";
+import { Activity, CircleHelp } from "lucide-react";
+import { getVisibleModulesForRole, isAccessRole, type AccessRole } from "@/lib/access-control";
 
 export function Sidebar() {
   const pathname = usePathname();
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [role, setRole] = useState<AccessRole | null>(null);
+  const [larkStatus, setLarkStatus] = useState<"checking" | "readonly" | "connected" | "offline">("checking");
 
   useEffect(() => {
     fetch("/api/auth/me")
       .then((r) => r.json())
-      .then((d) => { if (d.isAdmin) setIsAdmin(true); })
+      .then((d) => { setRole(isAccessRole(d.role) ? d.role : null); })
       .catch(() => {});
+
+    fetch("/api/lark/status")
+      .then((r) => r.json())
+      .then((d) => setLarkStatus(d.connected ? (d.readOnly ? "readonly" : "connected") : "offline"))
+      .catch(() => setLarkStatus("offline"));
   }, []);
 
-  const modules = MODULES.filter((m) => !(m as { adminOnly?: boolean }).adminOnly || isAdmin);
+  const modules = getVisibleModulesForRole(role, MODULES);
 
   return (
-    <aside className="w-56 h-screen bg-white text-gray-700 flex flex-col fixed left-0 top-0 border-r border-gray-200">
+    <>
+    <aside className="fixed left-0 top-0 hidden h-screen w-64 flex-col border-r border-slate-200/80 bg-white text-slate-700 lg:flex">
       {/* Logo 区域 */}
-      <div className="px-5 py-4 border-b border-gray-100">
+      <div className="border-b border-slate-100 px-5 py-5">
         <Link href="/" className="flex items-center gap-3">
-          <img
+          <Image
             src="/logo.png"
             alt="烁立德"
-            className="h-8 w-8 rounded-md shrink-0 object-contain"
+            width={40}
+            height={40}
+            className="h-10 w-10 shrink-0 rounded-xl object-cover shadow-sm ring-1 ring-slate-200"
           />
           <div>
-            <h1 className="text-sm font-bold text-gray-900 leading-tight">烁立德运营中心</h1>
-            <p className="text-[10px] text-gray-400 leading-tight">Solid eCom Operations</p>
+            <h1 className="text-sm font-semibold leading-tight tracking-tight text-slate-900">烁立德运营中心</h1>
+            <p className="mt-1 text-[10px] font-medium uppercase leading-tight tracking-[0.12em] text-slate-400">Solid Operations</p>
           </div>
         </Link>
       </div>
 
       {/* 导航 */}
-      <nav className="flex-1 px-3 py-3 space-y-0.5 overflow-y-auto">
+      <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-5">
+        <p className="mb-3 px-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">工作台</p>
         {modules.map((mod) => {
           const isActive = pathname === mod.path || pathname.startsWith(mod.path + "/");
-          const icon = mod.name.split(" ")[0];
-          const label = mod.name.split(" ").slice(1).join(" ");
           return (
             <Link
               key={mod.id}
               href={mod.path}
               className={cn(
-                "flex items-center gap-2.5 px-3 py-2 rounded-md text-[13px] transition-all duration-150",
+                "flex items-center gap-3 rounded-xl px-3 py-2.5 text-[13px] transition-all duration-150",
                 isActive
-                  ? "bg-gray-900 text-white font-medium shadow-sm"
-                  : "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
+                  ? "bg-orange-50 font-semibold text-orange-700"
+                  : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
               )}
             >
-              <span className="text-base w-5 text-center shrink-0">{icon}</span>
-              <span>{label}</span>
+              <ModuleIcon moduleId={mod.id} className={cn("h-4 w-4 shrink-0", isActive && "text-orange-500")} strokeWidth={1.8} />
+              <span>{mod.name}</span>
             </Link>
           );
         })}
       </nav>
 
       {/* 底部状态 */}
-      <div className="px-4 py-3 border-t border-gray-100">
-        <div className="flex items-center gap-2 text-[11px] text-gray-400">
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block animate-pulse" />
-          <span>飞书已连接</span>
+      <div className="border-t border-slate-100 px-4 py-4">
+        <div className="mb-3 flex items-center gap-2 rounded-xl bg-slate-50 px-3 py-2 text-[11px] text-slate-500">
+          <Activity className="h-3.5 w-3.5 text-orange-500" />
+          <span>系统运行正常</span>
         </div>
-        <p className="text-[10px] text-gray-300 mt-0.5">
+        <div className="flex items-center gap-2 text-[11px] text-slate-400">
+          <span className={cn(
+            "w-1.5 h-1.5 rounded-full inline-block",
+            larkStatus === "checking" && "bg-gray-300 animate-pulse",
+            larkStatus === "readonly" && "bg-amber-500",
+            larkStatus === "connected" && "bg-emerald-500",
+            larkStatus === "offline" && "bg-red-500",
+          )} />
+          <span>
+            {larkStatus === "checking" && "飞书连接检测中"}
+            {larkStatus === "readonly" && "飞书已连接（只读）"}
+            {larkStatus === "connected" && "飞书已连接"}
+            {larkStatus === "offline" && "飞书未连接"}
+          </span>
+        </div>
+        <p className="mt-1 text-[10px] text-slate-300">
           NewPower · VelocityGear · TitanRig
         </p>
+        <div className="mt-3 flex items-center gap-1.5 text-[10px] text-slate-300">
+          <CircleHelp className="h-3 w-3" />
+          <span>内部运营工作台</span>
+        </div>
       </div>
     </aside>
+    <nav
+      aria-label="移动端导航"
+      className="fixed inset-x-0 bottom-0 z-30 flex overflow-x-auto border-t border-slate-200 bg-white/95 px-1 py-1 shadow-[0_-6px_20px_rgba(15,23,42,0.05)] backdrop-blur lg:hidden"
+    >
+      {modules.map((mod) => {
+        const isActive = pathname === mod.path || pathname.startsWith(mod.path + "/");
+        return (
+          <Link
+            key={mod.id}
+            href={mod.path}
+            className={cn(
+              "flex min-w-[4.5rem] flex-1 flex-col items-center justify-center gap-0.5 rounded-md px-2 py-1.5 text-[10px] transition-colors",
+              isActive ? "bg-orange-50 text-orange-700" : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
+            )}
+          >
+            <ModuleIcon moduleId={mod.id} className="h-4 w-4" strokeWidth={1.8} />
+            <span className="whitespace-nowrap">{mod.name}</span>
+          </Link>
+        );
+      })}
+    </nav>
+    </>
   );
 }

@@ -19,22 +19,49 @@
 
 # production
 /build
+/.open-next/
+/.wrangler/
 
 # misc
 .DS_Store
 *.pem
+*.local
 
 # debug
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
+*.log
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.example
+
+# local user data
+/data/users.json
 
 # vercel
 .vercel
+
+# netlify
+.netlify
+
+# local design companion
+.superpowers/
+
+# local agent/editor state
+.agents/
+.claude/
+.codex/
+.idea/
+.vscode/
+
+# caches and temp files
+.cache/
+.turbo/
+tmp/
+temp/
 
 # typescript
 *.tsbuildinfo
