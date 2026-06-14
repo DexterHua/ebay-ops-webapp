@@ -19,6 +19,7 @@ const TABLE_MAP: Record<string, LarkTable> = {
   issues: "issues",
   competitors: "competitors",
   replenish: "replenish",
+  sourcing: "sourcing",
 };
 
 const DATE_FIELDS: Partial<Record<LarkTable, string[]>> = {
@@ -26,6 +27,7 @@ const DATE_FIELDS: Partial<Record<LarkTable, string[]>> = {
   stockFlow: ["日期"],
   issues: ["创建日期"],
   competitors: ["记录日期"],
+  sourcing: ["登记时间", "初选时间", "询价时间"],
 };
 
 function normalizeDateTime(value: unknown): unknown {
