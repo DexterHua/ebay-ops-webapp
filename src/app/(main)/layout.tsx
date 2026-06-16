@@ -3,11 +3,11 @@ import { Header } from "@/components/layout/header";
 
 export default function MainLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="h-full flex">
+    <div className="flex min-h-screen bg-[#f7f8fa]">
       <Sidebar />
-      <main className="flex-1 ml-56 flex flex-col min-h-screen bg-white">
+      <main className="flex min-h-screen min-w-0 flex-1 flex-col pb-20 lg:ml-64 lg:pb-0">
         <Header />
-        <div className="flex-1 bg-gray-50/60 p-5">{children}</div>
+        <div className="flex-1 p-3 sm:p-6">{children}</div>
       </main>
     </div>
   );

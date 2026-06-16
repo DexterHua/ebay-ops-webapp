@@ -3,21 +3,6 @@
 // （实际 lark-cli 调用现在在 /api/lark/* 路由中执行）
 // ============================================================
 
-// ---- 配置 ----
-export const LARK_CONFIG = {
-  baseToken: "RveVbcouwa06KcsDXcIc45AInkg",
-  tableIds: {
-    skuMaster: "tbl6w66MyySgO75J",
-    stockFlow: "tbl7aa7a0MaSsUSr",
-    salesDaily: "tbl65ySLOb7YOXN1",
-    customerService: "tbl3cCCTik5VVO7I",
-    replenishAdvice: "tbl1PtyuYfzXe2dt",
-    listingContent: "tblswYKzSskqXZ1V",
-    sourcingPool: "tblqnSLNGWFURtQq",
-    flow: "tblQxWm3VHIpTXd8",
-  },
-};
-
 // ---- 飞书消息推送（通过 API Route 代理） ----
 
 /** 发送飞书消息（浏览器调用 → API Route → lark-cli） */
@@ -43,6 +28,7 @@ export async function sendFeishuMessage(params: {
 
 /** 从浏览器调用：推送库存预警汇总到飞书 */
 export async function pushInventoryAlert(params: {
+  chatId: string;
   urgentSkus: Array<{ sku: string; name: string; daysRemaining: number }>;
   warningSkus: Array<{ sku: string; name: string; daysRemaining: number }>;
 }): Promise<boolean> {
@@ -66,7 +52,7 @@ export async function pushInventoryAlert(params: {
   if (lines.length === 0) return false;
 
   return sendFeishuMessage({
-    chatId: "placeholder", // 用户需要配置目标群 chat_id
+    chatId: params.chatId,
     title: `📦 库存预警 · ${params.urgentSkus.length + params.warningSkus.length} 个 SKU`,
     content: lines.join("\n"),
   });
