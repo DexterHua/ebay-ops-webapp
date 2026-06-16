@@ -10,6 +10,10 @@ import { ModuleIcon } from "@/components/layout/module-icons";
 import { Activity, CircleHelp } from "lucide-react";
 import { getVisibleModulesForRole, isAccessRole, type AccessRole } from "@/lib/access-control";
 
+function isActivePath(pathname: string, path: string): boolean {
+  return pathname === path || pathname.startsWith(`${path}/`);
+}
+
 export function Sidebar() {
   const pathname = usePathname();
   const [role, setRole] = useState<AccessRole | null>(null);
@@ -53,21 +57,44 @@ export function Sidebar() {
       <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-5">
         <p className="mb-3 px-3 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">工作台</p>
         {modules.map((mod) => {
-          const isActive = pathname === mod.path || pathname.startsWith(mod.path + "/");
+          const children = "children" in mod ? mod.children : undefined;
+          const isActive = isActivePath(pathname, mod.path);
           return (
-            <Link
-              key={mod.id}
-              href={mod.path}
-              className={cn(
-                "flex items-center gap-3 rounded-xl px-3 py-2.5 text-[13px] transition-all duration-150",
-                isActive
-                  ? "bg-orange-50 font-semibold text-orange-700"
-                  : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
+            <div key={mod.id}>
+              <Link
+                href={children?.[0]?.path || mod.path}
+                className={cn(
+                  "flex items-center gap-3 rounded-xl px-3 py-2.5 text-[13px] transition-all duration-150",
+                  isActive
+                    ? "bg-orange-50 font-semibold text-orange-700"
+                    : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
+                )}
+              >
+                <ModuleIcon moduleId={mod.id} className={cn("h-4 w-4 shrink-0", isActive && "text-orange-500")} strokeWidth={1.8} />
+                <span>{mod.name}</span>
+              </Link>
+              {children && isActive && (
+                <div className="mt-1 space-y-0.5 pl-8">
+                  {children.map((child) => {
+                    const childActive = isActivePath(pathname, child.path);
+                    return (
+                      <Link
+                        key={child.id}
+                        href={child.path}
+                        className={cn(
+                          "block rounded-lg px-3 py-1.5 text-[12px] transition-colors",
+                          childActive
+                            ? "bg-orange-100 font-medium text-orange-700"
+                            : "text-slate-400 hover:bg-slate-50 hover:text-slate-700",
+                        )}
+                      >
+                        {child.name}
+                      </Link>
+                    );
+                  })}
+                </div>
               )}
-            >
-              <ModuleIcon moduleId={mod.id} className={cn("h-4 w-4 shrink-0", isActive && "text-orange-500")} strokeWidth={1.8} />
-              <span>{mod.name}</span>
-            </Link>
+            </div>
           );
         })}
       </nav>
@@ -94,7 +121,7 @@ export function Sidebar() {
           </span>
         </div>
         <p className="mt-1 text-[10px] text-slate-300">
-          NewPower · VelocityGear · TitanRig
+          NewPower · VelocityGear · TitanRig · Solidparts · Nexusmoto
         </p>
         <div className="mt-3 flex items-center gap-1.5 text-[10px] text-slate-300">
           <CircleHelp className="h-3 w-3" />
@@ -107,11 +134,12 @@ export function Sidebar() {
       className="fixed inset-x-0 bottom-0 z-30 flex overflow-x-auto border-t border-slate-200 bg-white/95 px-1 py-1 shadow-[0_-6px_20px_rgba(15,23,42,0.05)] backdrop-blur lg:hidden"
     >
       {modules.map((mod) => {
-        const isActive = pathname === mod.path || pathname.startsWith(mod.path + "/");
+        const children = "children" in mod ? mod.children : undefined;
+        const isActive = isActivePath(pathname, mod.path);
         return (
           <Link
             key={mod.id}
-            href={mod.path}
+            href={children?.[0]?.path || mod.path}
             className={cn(
               "flex min-w-[4.5rem] flex-1 flex-col items-center justify-center gap-0.5 rounded-md px-2 py-1.5 text-[10px] transition-colors",
               isActive ? "bg-orange-50 text-orange-700" : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"

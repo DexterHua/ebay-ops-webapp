@@ -5,6 +5,7 @@ import {
   LayoutDashboard,
   MessageSquareText,
   PackageSearch,
+  SearchCheck,
   ReceiptText,
   ScanSearch,
   UsersRound,
@@ -15,6 +16,7 @@ export function ModuleIcon({ moduleId, ...props }: LucideProps & { moduleId: str
   switch (moduleId) {
     case "inventory": return <PackageSearch {...props} />;
     case "inventoryFlow": return <Boxes {...props} />;
+    case "sourcing": return <SearchCheck {...props} />;
     case "skuDetails": return <ScanSearch {...props} />;
     case "listing": return <FileText {...props} />;
     case "reviews": return <MessageSquareText {...props} />;

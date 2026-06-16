@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { buildSkuDetails, extractImageUrl, searchSkuDetails, toDisplayText, toLarkNumber } from "./sku-details";
 
 describe("SKU 详情数据整理", () => {
-  it("合并主数据、库存策略和运营汇总，但不暴露采购价和毛利率", () => {
+  it("合并主数据、库存策略和运营汇总，并展示采购价但不暴露毛利率", () => {
     const [detail] = buildSkuDetails({
       skuRows: [{
         SKU: "  np-001 ",
@@ -45,6 +45,7 @@ describe("SKU 详情数据整理", () => {
       status: "已上架",
       supplier: "供应商A",
       lowestPrice: 39.99,
+      purchasePrice: 12,
       grossWeightG: 780,
       packedSizeCm: "13*12*8",
       imageUrl: "https://example.com/brake.jpg",
@@ -60,7 +61,6 @@ describe("SKU 详情数据整理", () => {
       replenishStatus: "需关注",
     });
     expect(detail).not.toHaveProperty("suggestedPrice");
-    expect(detail).not.toHaveProperty("purchasePrice");
     expect(detail).not.toHaveProperty("profitMargin");
   });
 

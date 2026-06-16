@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  DETAIL_TEMPLATE_STORES,
   buildDetailFields,
   findSkuRecord,
   larkValueToText,
@@ -7,6 +8,19 @@ import {
 } from "@/lib/detail-template";
 
 describe("detail-template", () => {
+  it("registers the four listing store templates", () => {
+    expect(DETAIL_TEMPLATE_STORES.map((store) => store.name)).toEqual([
+      "Solidparts",
+      "NewPower",
+      "VelocityGear",
+      "TitanRig",
+    ]);
+    for (const store of DETAIL_TEMPLATE_STORES) {
+      expect(store.templates.withBanner.templatePath).toMatch(/_with_banner\.html$/);
+      expect(store.templates.noBanner.templatePath).toMatch(/_no_banner\.html$/);
+    }
+  });
+
   it("flattens common Lark field shapes into readable text", () => {
     expect(larkValueToText([{ text: "Honda" }, { text: "TRX 350" }])).toBe("Honda, TRX 350");
     expect(larkValueToText([{ name: "在售" }])).toBe("在售");

@@ -6,13 +6,12 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import {
   DETAIL_TEMPLATE_STORES,
   DetailFields,
   DetailRow,
-  DetailStoreId,
+  DetailTemplateVariant,
   buildDetailFields,
   detailRowsFromFields,
   findSkuRecord,
@@ -20,7 +19,7 @@ import {
   replaceEditableItemDetails,
 } from "@/lib/detail-template";
 import { cn } from "@/lib/utils";
-import { CheckCircle2, Clipboard, Download, FileCode2, Search, Store, WandSparkles } from "lucide-react";
+import { CheckCircle2, Clipboard, FileCode2, Search, Store, WandSparkles } from "lucide-react";
 import { toast } from "sonner";
 
 interface SkuFromLark {
@@ -64,16 +63,11 @@ function rowsToFields(rows: DetailRow[]): DetailFields {
   }, emptyDetailFields());
 }
 
-function filenameFor(storeId: DetailStoreId, sku: string) {
-  const store = DETAIL_TEMPLATE_STORES.find((item) => item.id === storeId)?.name || storeId;
-  const safeSku = sku.trim().replace(/[^a-zA-Z0-9._-]+/g, "_") || "sku";
-  return `${store}_${safeSku}_detail.html`;
-}
-
 export default function ListingPage() {
   const [skuList, setSkuList] = useState<SkuFromLark[]>([]);
   const [skuLoading, setSkuLoading] = useState(true);
-  const [selectedStoreId, setSelectedStoreId] = useState<DetailStoreId>("NP");
+  const [selectedStoreId, setSelectedStoreId] = useState(DETAIL_TEMPLATE_STORES[0].id);
+  const [selectedTemplateVariant, setSelectedTemplateVariant] = useState<DetailTemplateVariant>("withBanner");
   const [skuInput, setSkuInput] = useState("");
   const [templateHtml, setTemplateHtml] = useState("");
   const [templateLoading, setTemplateLoading] = useState(true);
@@ -82,6 +76,7 @@ export default function ListingPage() {
   const [showSearch, setShowSearch] = useState(false);
 
   const selectedStore = DETAIL_TEMPLATE_STORES.find((storeItem) => storeItem.id === selectedStoreId) || DETAIL_TEMPLATE_STORES[0];
+  const selectedTemplate = selectedStore.templates[selectedTemplateVariant];
   const detailFields = useMemo(() => rowsToFields(detailRows), [detailRows]);
   const generatedHtml = useMemo(
     () => (templateHtml ? replaceEditableItemDetails(templateHtml, detailFields) : ""),
@@ -123,7 +118,7 @@ export default function ListingPage() {
 
   useEffect(() => {
     let ignore = false;
-    fetch(selectedStore.templatePath)
+    fetch(selectedTemplate.templatePath)
       .then((response) => {
         if (!response.ok) throw new Error("模板文件读取失败");
         return response.text();
@@ -141,7 +136,7 @@ export default function ListingPage() {
     return () => {
       ignore = true;
     };
-  }, [selectedStore.templatePath, selectedStore.name, selectedSkuMeta]);
+  }, [selectedStore.name, selectedSkuMeta, selectedTemplate.templatePath]);
 
   useEffect(() => {
     const timeout = window.setTimeout(() => {
@@ -169,22 +164,37 @@ export default function ListingPage() {
     setDetailRows((rows) => rows.map((row) => (row.key === key ? { ...row, value } : row)));
   };
 
-  const copyHtml = async () => {
-    if (!generatedHtml) return;
-    await navigator.clipboard.writeText(generatedHtml);
-    toast.success("HTML 代码已复制");
+  const writeClipboardText = async (text: string) => {
+    if (navigator.clipboard?.writeText) {
+      try {
+        await navigator.clipboard.writeText(text);
+        return;
+      } catch {
+        // Fall through to the legacy copy path for embedded browsers.
+      }
+    }
+
+    const textarea = document.createElement("textarea");
+    textarea.value = text;
+    textarea.setAttribute("readonly", "");
+    textarea.style.position = "fixed";
+    textarea.style.left = "-9999px";
+    textarea.style.top = "0";
+    document.body.appendChild(textarea);
+    textarea.select();
+    const copied = document.execCommand("copy");
+    document.body.removeChild(textarea);
+    if (!copied) throw new Error("Clipboard copy failed");
   };
 
-  const downloadHtml = () => {
+  const copyHtml = async () => {
     if (!generatedHtml) return;
-    const blob = new Blob([generatedHtml], { type: "text/html;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = filenameFor(selectedStoreId, skuInput);
-    anchor.click();
-    URL.revokeObjectURL(url);
-    toast.success("HTML 文件已生成");
+    try {
+      await writeClipboardText(generatedHtml);
+      toast.success("HTML 代码已复制");
+    } catch {
+      toast.error("复制失败，请检查浏览器剪贴板权限");
+    }
   };
 
   const skuName = selectedSkuMeta ? getRecordText(selectedSkuMeta, ["中文品名", "英文标题关键词", "品名"]) : "";
@@ -199,13 +209,9 @@ export default function ListingPage() {
           <p className="page-description">选择店铺模板，输入 SKU，自动读取飞书 “SKU 主数据” 并填入 Item Detail 可编辑栏。</p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button variant="outline" onClick={copyHtml} disabled={!generatedHtml}>
+          <Button onClick={copyHtml} disabled={!generatedHtml || templateLoading}>
             <Clipboard className="h-4 w-4" />
-            复制 HTML
-          </Button>
-          <Button onClick={downloadHtml} disabled={!generatedHtml || templateLoading}>
-            <Download className="h-4 w-4" />
-            生成文件
+            复制代码
           </Button>
         </div>
       </div>
@@ -246,6 +252,38 @@ export default function ListingPage() {
 
           <Card>
             <CardHeader>
+              <CardTitle className="text-base">模板版本</CardTitle>
+              <CardDescription>选择是否保留顶部 banner 图片。</CardDescription>
+            </CardHeader>
+            <CardContent className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              {Object.values(selectedStore.templates).map((templateOption) => {
+                const selected = selectedTemplateVariant === templateOption.id;
+                return (
+                  <button
+                    key={templateOption.id}
+                    type="button"
+                    onClick={() => {
+                      setTemplateLoading(true);
+                      setSelectedTemplateVariant(templateOption.id);
+                    }}
+                    className={cn(
+                      "flex items-center justify-between rounded-lg border px-3 py-3 text-left transition-colors",
+                      selected ? "border-orange-300 bg-orange-50 text-orange-900" : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50",
+                    )}
+                  >
+                    <span>
+                      <span className="block text-sm font-semibold">{templateOption.name}</span>
+                      <span className="mt-0.5 block text-xs text-slate-500">{templateOption.description}</span>
+                    </span>
+                    {selected && <CheckCircle2 className="h-4 w-4 text-orange-500" />}
+                  </button>
+                );
+              })}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
               <CardTitle className="flex items-center gap-2 text-base">
                 <Search className="h-4 w-4 text-orange-500" />
                 SKU 主数据
@@ -253,7 +291,7 @@ export default function ListingPage() {
               <CardDescription>输入完整 SKU 会自动匹配；也可以从搜索结果中点选。</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
-              <div className="relative">
+              <div>
                 <Input
                   value={skuInput}
                   placeholder={skuLoading ? "正在加载 SKU 主数据..." : "输入 SKU 编码"}
@@ -266,7 +304,7 @@ export default function ListingPage() {
                   disabled={skuLoading}
                 />
                 {showSearch && filteredSkus.length > 0 && (
-                  <div className="absolute z-20 mt-1 w-full overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg">
+                  <div className="mt-2 w-full overflow-hidden rounded-lg border border-slate-200 bg-white shadow-lg">
                     <ScrollArea className="max-h-72">
                       {filteredSkus.map((record) => {
                         const sku = getRecordText(record, ["SKU", "sku"]);
@@ -338,10 +376,11 @@ export default function ListingPage() {
                   <FileCode2 className="h-4 w-4 text-orange-500" />
                   {selectedStore.label} 预览
                 </CardTitle>
-                <CardDescription>确认后可直接下载 HTML 文件或复制代码导入 eBay 系统。</CardDescription>
+                <CardDescription>确认后可直接复制代码导入 eBay 系统。</CardDescription>
               </div>
               <div className="flex flex-wrap gap-2">
                 <Badge variant="outline">{selectedStore.name}</Badge>
+                <Badge variant="outline">{selectedTemplate.name}</Badge>
                 {skuInput.trim() && <Badge variant="outline">{skuInput.trim()}</Badge>}
               </div>
             </CardHeader>
@@ -353,17 +392,6 @@ export default function ListingPage() {
                   <iframe title="详情页预览" srcDoc={generatedHtml} className="h-full w-full bg-white" />
                 )}
               </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-base">HTML 代码</CardTitle>
-              <CardDescription>复制这里的完整代码，也可以用右上角按钮一键复制。</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Separator className="mb-3" />
-              <Textarea value={generatedHtml} readOnly rows={12} className="font-mono text-xs" />
             </CardContent>
           </Card>
         </div>

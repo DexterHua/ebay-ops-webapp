@@ -1,11 +1,19 @@
-export type DetailStoreId = "NP" | "VG" | "TR";
+export type DetailStoreId = "SP" | "NP" | "VG" | "TR";
+export type DetailTemplateVariant = "withBanner" | "noBanner";
+
+export interface DetailTemplateVariantOption {
+  id: DetailTemplateVariant;
+  name: string;
+  description: string;
+  templatePath: string;
+}
 
 export interface DetailTemplateStore {
   id: DetailStoreId;
   name: string;
   label: string;
-  templatePath: string;
   tableClass: string;
+  templates: Record<DetailTemplateVariant, DetailTemplateVariantOption>;
 }
 
 export interface DetailFields {
@@ -26,25 +34,84 @@ export type SkuRecordLike = Record<string, unknown>;
 
 export const DETAIL_TEMPLATE_STORES: DetailTemplateStore[] = [
   {
+    id: "SP",
+    name: "Solidparts",
+    label: "Solidparts",
+    tableClass: "sp-spec",
+    templates: {
+      withBanner: {
+        id: "withBanner",
+        name: "带 banner 图",
+        description: "完整版",
+        templatePath: "/detail-templates/Solidparts_with_banner.html",
+      },
+      noBanner: {
+        id: "noBanner",
+        name: "不带 banner 图",
+        description: "精简版",
+        templatePath: "/detail-templates/Solidparts_no_banner.html",
+      },
+    },
+  },
+  {
     id: "NP",
     name: "NewPower",
     label: "Newpower Autoparts",
-    templatePath: "/detail-templates/Newpower.html",
     tableClass: "np-spec",
+    templates: {
+      withBanner: {
+        id: "withBanner",
+        name: "带 banner 图",
+        description: "完整版",
+        templatePath: "/detail-templates/Newpower_with_banner.html",
+      },
+      noBanner: {
+        id: "noBanner",
+        name: "不带 banner 图",
+        description: "精简版",
+        templatePath: "/detail-templates/Newpower_no_banner.html",
+      },
+    },
   },
   {
     id: "VG",
     name: "VelocityGear",
     label: "VelocityGear Direct",
-    templatePath: "/detail-templates/VelocityGear.html",
     tableClass: "vg-spec",
+    templates: {
+      withBanner: {
+        id: "withBanner",
+        name: "带 banner 图",
+        description: "完整版",
+        templatePath: "/detail-templates/VelocityGear_with_banner.html",
+      },
+      noBanner: {
+        id: "noBanner",
+        name: "不带 banner 图",
+        description: "精简版",
+        templatePath: "/detail-templates/VelocityGear_no_banner.html",
+      },
+    },
   },
   {
     id: "TR",
     name: "TitanRig",
     label: "TitanRig Auto & Moto",
-    templatePath: "/detail-templates/TitanRig.html",
     tableClass: "tr-spec",
+    templates: {
+      withBanner: {
+        id: "withBanner",
+        name: "带 banner 图",
+        description: "完整版",
+        templatePath: "/detail-templates/TitanRig_with_banner.html",
+      },
+      noBanner: {
+        id: "noBanner",
+        name: "不带 banner 图",
+        description: "精简版",
+        templatePath: "/detail-templates/TitanRig_no_banner.html",
+      },
+    },
   },
 ];
 

@@ -3,7 +3,6 @@
 import { useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
@@ -51,13 +50,13 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#101722] px-4 py-10">
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_15%_20%,rgba(245,158,11,0.18),transparent_28rem),radial-gradient(circle_at_85%_80%,rgba(71,85,105,0.22),transparent_30rem)]" />
-      <div className="relative grid w-full max-w-4xl overflow-hidden rounded-[28px] border border-white/10 bg-white shadow-2xl shadow-black/20 lg:grid-cols-[1.08fr_0.92fr]">
+    <main className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#101722] px-4 py-8 sm:px-6">
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_18%_18%,rgba(245,158,11,0.2),transparent_24rem),radial-gradient(circle_at_82%_80%,rgba(71,85,105,0.24),transparent_28rem)]" />
+      <section className="relative grid w-full max-w-[25rem] overflow-hidden rounded-3xl bg-white shadow-2xl shadow-black/25 lg:max-w-4xl lg:grid-cols-[1.08fr_0.92fr]">
         <div className="hidden min-h-[560px] flex-col justify-between bg-[#17202d] p-10 text-white lg:flex">
           <div>
             <div className="flex items-center gap-3">
-              <Image src="/logo.png" alt="烁立德" width={52} height={52} className="h-13 w-13 rounded-2xl object-cover" />
+              <Image src="/logo.png" alt="烁立德" width={52} height={52} className="h-13 w-13 rounded-2xl object-cover" priority />
               <div>
                 <h1 className="text-base font-semibold tracking-tight">烁立德运营中心</h1>
                 <p className="mt-1 text-[10px] font-medium uppercase tracking-[0.2em] text-slate-400">Solid Operations</p>
@@ -76,76 +75,72 @@ export default function LoginPage() {
             <span>仅限内部团队安全访问</span>
           </div>
         </div>
-        <div className="flex items-center justify-center px-6 py-10 sm:px-12">
-          <div className="w-full max-w-sm">
-        {/* Logo */}
-        <div className="mb-8 lg:hidden">
-          <div className="mb-4 h-14 w-14 overflow-hidden rounded-2xl ring-1 ring-slate-200">
-            <Image src="/logo.png" alt="烁立德" width={56} height={56} className="h-full w-full object-cover" />
-          </div>
-          <h1 className="text-lg font-semibold text-slate-900">烁立德运营中心</h1>
-          <p className="mt-1 text-[10px] font-medium uppercase tracking-[0.16em] text-slate-400">Solid Operations</p>
-        </div>
 
-        {/* 表单 */}
-        <Card className="border-0 bg-transparent p-0 shadow-none">
-          <CardHeader className="px-0 pb-5">
-            <p className="page-kicker">Secure Access</p>
-            <CardTitle className="mt-1 text-2xl font-semibold tracking-tight text-slate-900">登录运营工作台</CardTitle>
-            <CardDescription className="text-sm">使用内部账号继续访问</CardDescription>
-          </CardHeader>
-          <CardContent className="px-0">
-            <form onSubmit={handleLogin} className="space-y-3.5">
+        <div className="px-7 py-8 sm:px-9 sm:py-10 lg:flex lg:items-center lg:px-12">
+          <div className="w-full">
+            <div className="mb-8 lg:hidden">
+              <div className="mb-4 flex h-16 w-16 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 shadow-sm">
+                <Image src="/logo.png" alt="烁立德" width={64} height={64} className="h-full w-full object-cover" priority />
+              </div>
+              <h1 className="text-xl font-semibold tracking-tight text-slate-950">烁立德运营中心</h1>
+              <p className="mt-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Solid Operations</p>
+            </div>
+
+            <div className="mb-7">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-orange-600">Secure Access</p>
+              <h2 className="mt-3 text-3xl font-semibold tracking-tight text-slate-950">登录运营工作台</h2>
+              <p className="mt-2 text-sm leading-6 text-slate-500">使用内部账号继续访问</p>
+            </div>
+
+            <form onSubmit={handleLogin} className="space-y-4">
               <label className="block space-y-2">
                 <span className="text-xs font-medium text-slate-500">姓名</span>
                 <div className="relative">
-                  <UserRound className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                <Input
-                  type="text"
-                  name="username"
-                  placeholder="请输入中文姓名"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  autoFocus
-                  autoComplete="username"
-                  autoCapitalize="none"
-                  autoCorrect="off"
-                  inputMode="text"
-                  lang="zh-CN"
-                  spellCheck={false}
-                  className="h-11 pl-10"
-                />
+                  <UserRound className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                  <Input
+                    type="text"
+                    name="username"
+                    placeholder="请输入中文姓名"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    autoFocus
+                    autoComplete="username"
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    inputMode="text"
+                    lang="zh-CN"
+                    spellCheck={false}
+                    className="h-12 rounded-xl pl-10 text-[15px]"
+                  />
                 </div>
               </label>
               <label className="block space-y-2">
                 <span className="text-xs font-medium text-slate-500">密码</span>
                 <div className="relative">
-                  <LockKeyhole className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                <Input
-                  type="password"
-                  placeholder="密码"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  autoComplete="current-password"
-                  className="h-11 pl-10"
-                />
+                  <LockKeyhole className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                  <Input
+                    type="password"
+                    placeholder="密码"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    autoComplete="current-password"
+                    className="h-12 rounded-xl pl-10 text-[15px]"
+                  />
                 </div>
               </label>
-              <Button type="submit" disabled={loading} className="mt-2 h-11 w-full">
+              <Button type="submit" disabled={loading} className="mt-3 h-12 w-full rounded-xl text-base font-semibold">
                 {loading ? "验证中…" : "进入系统"}
                 {!loading && <ArrowRight className="h-4 w-4" />}
               </Button>
             </form>
-          </CardContent>
-        </Card>
 
-        <p className="mt-6 flex items-center gap-1.5 text-[11px] text-slate-400 lg:hidden">
-          <ShieldCheck className="h-3.5 w-3.5" />
-          仅限内部团队安全访问
-        </p>
+            <p className="mt-6 flex items-center gap-1.5 text-[12px] text-slate-400 lg:hidden">
+              <ShieldCheck className="h-3.5 w-3.5" />
+              仅限内部团队安全访问
+            </p>
           </div>
         </div>
-      </div>
-    </div>
+      </section>
+    </main>
   );
 }

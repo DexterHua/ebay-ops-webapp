@@ -34,6 +34,12 @@ const priceFormatter = new Intl.NumberFormat("en-US", {
   maximumFractionDigits: 2,
 });
 
+const cnyPriceFormatter = new Intl.NumberFormat("zh-CN", {
+  style: "currency",
+  currency: "CNY",
+  maximumFractionDigits: 2,
+});
+
 function formatNumber(value: number | null | undefined, suffix = "") {
   if (typeof value !== "number" || !Number.isFinite(value)) return "--";
   return `${numberFormatter.format(value)}${suffix}`;
@@ -42,6 +48,11 @@ function formatNumber(value: number | null | undefined, suffix = "") {
 function formatPrice(value: number) {
   if (!Number.isFinite(value) || value <= 0) return "--";
   return priceFormatter.format(value);
+}
+
+function formatCnyPrice(value: number) {
+  if (!Number.isFinite(value) || value <= 0) return "--";
+  return cnyPriceFormatter.format(value);
 }
 
 function textOrDash(value: string) {
@@ -280,8 +291,9 @@ export default function SkuDetailsPage() {
                     <CardTitle>规格价格</CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                    <div className="grid grid-cols-1 gap-3 md:grid-cols-2 2xl:grid-cols-4">
                       <DetailItem label="最低售价" value={formatPrice(selected.lowestPrice)} highlight />
+                      <DetailItem label="采购价" value={formatCnyPrice(selected.purchasePrice)} />
                       <DetailItem label="商品毛重" value={formatNumber(selected.grossWeightG, " g")} />
                       <DetailItem label="商品尺寸（含包装）" value={textOrDash(selected.packedSizeCm)} />
                     </div>

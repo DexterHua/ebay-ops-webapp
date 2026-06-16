@@ -13,7 +13,7 @@ const EXTRA_DESC: Record<string, string> = {
   inventory: "实时监控海外仓库存 · AI预测断货时间 · 智能补货建议 →",
   listing: "SKU自动选择 → AI生成eBay标题/HTML描述/ItemSpecs → 保存飞书 →",
   reviews: "飞书待办列表 → AI分析买家消息 → 生成回复草稿 → 回写飞书 →",
-  dataEntry: "SKU主数据 · 销售日报 · 库存流水 · 客服异常 · 竞品监控 — 一站式录入 →",
+  dataEntry: "SKU主数据 · 销售日报 · 客服异常 · 竞品监控 — 一站式录入 →",
   finance: "报销申请提报 → 财务审批 → 记录归档 → 飞书烁立德财务表格同步 →",
 };
 
@@ -63,7 +63,7 @@ export default function Home() {
           {userName ? `欢迎回来，${userName}` : <span className="inline-block h-7 w-40 animate-pulse rounded-md bg-muted align-middle" />}
         </h1>
         <p className="page-description">
-          NewPower · VelocityGear · TitanRig 运营中 &nbsp;|&nbsp;
+          NewPower · VelocityGear · TitanRig · Solidparts · Nexusmoto 运营中 &nbsp;|&nbsp;
           {stats.sku > 0
             ? `${stats.sku} SKU · ${stats.pipeline.toLocaleString()} 件在途 · ${stats.warningCount} 条库存预警`
             : <span className="inline-block h-4 w-64 animate-pulse rounded-md bg-muted align-middle" />}

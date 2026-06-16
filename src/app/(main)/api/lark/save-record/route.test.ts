@@ -42,6 +42,7 @@ describe("save-record sourcing", () => {
       table: "sourcing",
       fields: {
         OEM码: "84306-0E010",
+        商品链接: "https://www.ebay.com/itm/123456",
         英文名称: "Clock Spring",
         中文名称: "方向盘游丝",
         登记人: "运营",
@@ -55,6 +56,10 @@ describe("save-record sourcing", () => {
     expect(json).toEqual({ success: true, table: "sourcing", recordIds: ["rec-sourcing-1"] });
     expect(lark.createLarkRecords).toHaveBeenCalledWith("sourcing", [{
       OEM码: "84306-0E010",
+      商品链接: {
+        text: "https://www.ebay.com/itm/123456",
+        link: "https://www.ebay.com/itm/123456",
+      },
       英文名称: "Clock Spring",
       中文名称: "方向盘游丝",
       登记人: "运营",

@@ -9,6 +9,7 @@ export interface SkuDetails {
   status: string;
   supplier: string;
   lowestPrice: number;
+  purchasePrice: number;
   grossWeightG: number;
   packedSizeCm: string;
   imageUrl: string;
@@ -149,6 +150,7 @@ export function buildSkuDetails(input: {
         status: firstText(row, ["SKU状态", "状态"]),
         supplier: firstText(row, ["供应商"]),
         lowestPrice: firstNumber(row, ["最低售价"]),
+        purchasePrice: firstNumber(row, ["采购价", "采购成本", "成本价"]),
         grossWeightG: firstNumber(row, ["商品毛重（g）", "商品重量（g）", "重量"]),
         packedSizeCm: firstText(row, ["商品尺寸（含包装）（cm）", "商品尺寸", "尺寸"]),
         imageUrl: extractImageUrl(row),

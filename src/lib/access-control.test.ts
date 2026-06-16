@@ -34,4 +34,23 @@ describe("访问权限规则", () => {
     expect(getVisibleModulesForRole("operator", MODULES).map((module) => module.path)).toContain("/sku-details");
     expect(getVisibleModulesForRole("purchaser", MODULES).map((module) => module.path)).toContain("/sku-details");
   });
+
+  test("选品流程作为普通一级菜单展示并包含子流程入口", () => {
+    const sourcing = MODULES.find((module) => module.id === "sourcing") as
+      | { path: string; adminOnly?: boolean; children?: Array<{ path: string; name: string }> }
+      | undefined;
+
+    expect(sourcing?.path).toBe("/sourcing");
+    expect(sourcing?.adminOnly).toBeUndefined();
+    expect(sourcing?.children?.map((item) => [item.name, item.path])).toEqual([
+      ["选品登记", "/sourcing/register"],
+      ["初选处理", "/sourcing/review"],
+      ["待询价清单", "/sourcing/quote-pending"],
+      ["询价中", "/sourcing/quoting"],
+      ["已完成", "/sourcing/completed"],
+      ["未入选", "/sourcing/rejected"],
+    ]);
+    expect(getVisibleModulesForRole("operator", MODULES).map((module) => module.path)).toContain("/sourcing");
+    expect(getVisibleModulesForRole("purchaser", MODULES).map((module) => module.path)).toContain("/sourcing");
+  });
 });

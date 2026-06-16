@@ -42,6 +42,23 @@ function normalizeDateTime(value: unknown): unknown {
   return Number.isNaN(timestamp) ? value : timestamp;
 }
 
+function normalizeUrlField(value: unknown): unknown {
+  if (typeof value !== "string") return value;
+  const url = value.trim();
+  if (!url) return "";
+  return { text: url, link: url };
+}
+
+function normalizeSourcingFields(fields: Record<string, unknown>): Record<string, unknown> {
+  if ("商品链接" in fields) {
+    return {
+      ...fields,
+      商品链接: normalizeUrlField(fields.商品链接),
+    };
+  }
+  return fields;
+}
+
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -69,8 +86,9 @@ export async function POST(request: NextRequest) {
     for (const field of DATE_FIELDS[tableKey] || []) {
       if (field in normalizedFields) normalizedFields[field] = normalizeDateTime(normalizedFields[field]);
     }
+    const larkFields = tableKey === "sourcing" ? normalizeSourcingFields(normalizedFields) : normalizedFields;
 
-    const recordIds = await createLarkRecords(tableKey, [normalizedFields]);
+    const recordIds = await createLarkRecords(tableKey, [larkFields]);
     let warning: string | undefined;
     try {
       if (tableKey === "stockFlow") await syncStockSummaryFromFlow(normalizedFields);

@@ -13,7 +13,13 @@ import {
 } from "recharts";
 
 const COLORS = ["#3b82f6", "#f59e0b", "#10b981", "#ef4444", "#8b5cf6", "#06b6d4", "#6366f1"];
-const STORE_COLORS: Record<string, string> = { NP: "#3b82f6", VG: "#f59e0b", TR: "#10b981" };
+const STORE_COLORS: Record<string, string> = {
+  NP: "#3b82f6",
+  VG: "#f59e0b",
+  TR: "#10b981",
+  SP: "#64748b",
+  NM: "#8b5cf6",
+};
 
 interface SkuData { SKU?: string; 中文品名?: string; 类目?: string[]; SKU状态?: string[]; 橙联可售?: number; 采购价?: number; 建议售价?: number; 预估毛利率?: number; 预估毛利?: number; 单件总成本?: number; "商品毛重（g）"?: number; [key: string]: unknown; }
 interface SalesData { 店铺?: string; 售出数量?: number; 销售额?: number; 日期?: string; [key: string]: unknown; }
@@ -34,12 +40,13 @@ export default function StorePage({ params }: { params: Promise<{ id: string }> 
       fetch("/api/lark?table=sales&limit=500").then(r => r.json()),
     ]).then(([s, summary, salesResult]) => {
       if (s.success && summary.success) {
-        const idx = ["NP", "VG", "TR"].indexOf(id);
+        const storeIds = STORES.filter((item) => item.active).map((item) => item.id);
+        const idx = store ? storeIds.indexOf(store.id) : -1;
         const summaryBySku = new Map((summary.data as SkuData[]).map((row) => [row.SKU, row]));
         const valid = (s.data as SkuData[])
           .filter((r) => r.SKU && r.中文品名)
           .map((row) => ({ ...row, ...(summaryBySku.get(row.SKU) || {}) }));
-        const filtered = valid.filter((_, i) => i % 3 === idx);
+        const filtered = idx >= 0 ? valid.filter((_, i) => i % storeIds.length === idx) : [];
         setSkus(filtered);
       } else toast.error("数据加载失败");
       if (salesResult.success && store) {
@@ -138,7 +145,6 @@ export default function StorePage({ params }: { params: Promise<{ id: string }> 
             </div>
             <div>
               <h1 className="text-xl font-bold text-gray-900">{store.name}</h1>
-              <p className="text-xs text-gray-400">{store.description} · {skus.length} SKU · {priced.length} 已定价 · {unpriced.length} 待定价</p>
             </div>
           </div>
         </div>

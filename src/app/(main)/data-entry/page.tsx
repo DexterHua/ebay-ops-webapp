@@ -11,7 +11,7 @@ import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
 
 // ============================================================
-// 数据录入 — 四大高频表单
+// 数据录入 — 高频表单
 // ============================================================
 
 const STORES = ["NewPower", "VelocityGear", "TitanRig", "Nexusmoto"];
@@ -41,10 +41,8 @@ export default function DataEntryPage() {
         <TabsList className="flex w-full justify-start overflow-x-auto">
           <TabsTrigger value="sku">SKU 主数据</TabsTrigger>
           <TabsTrigger value="sales">销售日报</TabsTrigger>
-          <TabsTrigger value="stock">库存流水</TabsTrigger>
           <TabsTrigger value="issues">客服异常</TabsTrigger>
           <TabsTrigger value="competitors">竞品</TabsTrigger>
-          <TabsTrigger value="sourcing">选品登记</TabsTrigger>
         </TabsList>
 
         <TabsContent value="sku">
@@ -53,17 +51,11 @@ export default function DataEntryPage() {
         <TabsContent value="sales">
           <SalesForm skuList={skuList} today={today} />
         </TabsContent>
-        <TabsContent value="stock">
-          <StockForm skuList={skuList} today={today} />
-        </TabsContent>
         <TabsContent value="issues">
           <IssuesForm skuList={skuList} today={today} />
         </TabsContent>
         <TabsContent value="competitors">
           <CompetitorForm skuList={skuList} today={today} />
-        </TabsContent>
-        <TabsContent value="sourcing">
-          <SourcingForm />
         </TabsContent>
       </Tabs>
     </div>
@@ -237,77 +229,6 @@ function SalesForm({ skuList, today }: { skuList: SkuOption[]; today: string }) 
 }
 
 // ==============================================================
-//  库存流水
-// ==============================================================
-function StockForm({ skuList, today }: { skuList: SkuOption[]; today: string }) {
-  const { submitting, submit } = useSubmit();
-  const MOVEMENT_TYPES = ["到货入库", "发往橙联", "橙联上架", "橙联签收", "订单出库", "退货入库", "报损", "库存调整", "质检转良品"];
-  const LOCATIONS = ["本地仓", "橙联在途", "橙联可售", "不良品", "退货待检"];
-
-  const [form, setForm] = useState({ SKU: "", 日期: today, 变动类型: "到货入库", 库存位置: "本地仓", 数量变动: "", 相关单号: "", 操作人: "", 备注: "" });
-  const [skuQuery, setSkuQuery] = useState("");
-  const [showSku, setShowSku] = useState(false);
-
-  const matched = skuQuery.trim()
-    ? skuList.filter(s => s.SKU?.toLowerCase().includes(skuQuery.toLowerCase()) || s.中文品名?.toLowerCase().includes(skuQuery.toLowerCase()))
-    : [];
-
-  const handleSkuSelect = (s: SkuOption) => {
-    setForm({ ...form, SKU: s.SKU || "" });
-    setSkuQuery(s.SKU || "");
-    setShowSku(false);
-  };
-
-  const handleSubmit = async () => {
-    if (!form.SKU || !form.数量变动) { toast.error("请填写 SKU 和 数量变动"); return; }
-    const ok = await submit("stockFlow", { ...form, 数量变动: parseInt(form.数量变动) || 0 });
-    if (ok) setForm({ ...form, 数量变动: "", 相关单号: "", 备注: "" });
-  };
-
-  return <Card>
-    <CardHeader><CardTitle className="text-base">库存变动记录</CardTitle><CardDescription>每次库存变动记一笔，写入 02_库存流水</CardDescription></CardHeader>
-    <CardContent className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-      <div className="relative sm:col-span-2"><label className="text-xs text-gray-400">SKU *</label>
-        <Input
-          placeholder="输入 SKU 编码或品名…"
-          value={skuQuery}
-          onChange={e => {
-            setSkuQuery(e.target.value);
-            setForm({ ...form, SKU: "" });
-            setShowSku(true);
-          }}
-          onFocus={() => { if (skuQuery) setShowSku(true); }}
-          onBlur={() => setTimeout(() => setShowSku(false), 200)}
-        />
-        {showSku && matched.length > 0 && (
-          <div className="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-hidden">
-            <ScrollArea className="max-h-48">
-              {matched.map((s, i) => (
-                <button key={String(s._idx ?? i)} className="w-full text-left px-3 py-2 hover:bg-blue-50 border-b border-gray-50 last:border-b-0" onMouseDown={() => handleSkuSelect(s)}>
-                  <span className="text-sm font-medium text-gray-900">{s.SKU}</span>
-                  <span className="text-xs text-gray-400 ml-2">{s.中文品名}</span>
-                </button>
-              ))}
-            </ScrollArea>
-          </div>
-        )}
-        {showSku && skuQuery && matched.length === 0 && (
-          <div className="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg p-2 text-center text-sm text-gray-400">未匹配</div>
-        )}
-      </div>
-      <div><label className="text-xs text-gray-400">变动类型 *</label><Select value={form.变动类型} onValueChange={(v) => setForm({...form,变动类型: v || "到货入库"})}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{MOVEMENT_TYPES.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}</SelectContent></Select></div>
-      <div><label className="text-xs text-gray-400">库存位置</label><Select value={form.库存位置} onValueChange={(v) => setForm({...form,库存位置: v || "本地仓"})}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{LOCATIONS.map(l => <SelectItem key={l} value={l}>{l}</SelectItem>)}</SelectContent></Select></div>
-      <div><label className="text-xs text-gray-400">数量变动 *</label><Input type="number" value={form.数量变动} onChange={e => setForm({...form, 数量变动: e.target.value})} placeholder="正数=增加，负数=减少" /></div>
-      <div><label className="text-xs text-gray-400">日期</label><Input value={form.日期} onChange={e => setForm({...form, 日期: e.target.value})} /></div>
-      <div><label className="text-xs text-gray-400">相关单号</label><Input value={form.相关单号} onChange={e => setForm({...form, 相关单号: e.target.value})} placeholder="采购单/物流号/订单号" /></div>
-      <div><label className="text-xs text-gray-400">操作人</label><Input value={form.操作人} onChange={e => setForm({...form, 操作人: e.target.value})} /></div>
-      <div className="sm:col-span-2"><label className="text-xs text-gray-400">备注</label><Input value={form.备注} onChange={e => setForm({...form, 备注: e.target.value})} /></div>
-      <div className="sm:col-span-2"><Button onClick={handleSubmit} disabled={submitting} className="w-full">{submitting ? "保存中..." : "保存到飞书"}</Button></div>
-    </CardContent>
-  </Card>;
-}
-
-// ==============================================================
 //  客服异常
 // ==============================================================
 function IssuesForm({ skuList, today }: { skuList: SkuOption[]; today: string }) {
@@ -376,155 +297,6 @@ function IssuesForm({ skuList, today }: { skuList: SkuOption[]; today: string })
       <div className="sm:col-span-2"><Button onClick={handleSubmit} disabled={submitting} className="w-full">{submitting ? "保存中..." : "保存到飞书"}</Button></div>
     </CardContent>
   </Card>;
-}
-
-// ==============================================================
-//  选品登记
-// ==============================================================
-function SourcingForm() {
-  const { submitting, submit } = useSubmit();
-  const defaultForm = {
-    OEM码: "",
-    品牌: "",
-    商品链接: "",
-    英文名称: "",
-    中文名称: "",
-    近90天销量: "",
-    eBay平均售价: "",
-    选品备注: "",
-  };
-  const [form, setForm] = useState(defaultForm);
-
-  const f = (key: keyof typeof form) => ({
-    value: form[key],
-    onChange: (event: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-      setForm({ ...form, [key]: event.target.value });
-    },
-  });
-
-  const parseOptionalInteger = (value: string) => {
-    if (!value.trim()) return undefined;
-    const parsed = Number.parseInt(value, 10);
-    return Number.isFinite(parsed) ? parsed : Number.NaN;
-  };
-
-  const parseOptionalMoney = (value: string) => {
-    if (!value.trim()) return undefined;
-    const parsed = Number.parseFloat(value);
-    return Number.isFinite(parsed) ? Number(parsed.toFixed(2)) : Number.NaN;
-  };
-
-  const handleSubmit = async () => {
-    if (!form.OEM码.trim() || !form.英文名称.trim() || !form.中文名称.trim()) {
-      toast.error("请填写 OEM码、英文名称和中文名称");
-      return;
-    }
-
-    const sales90 = parseOptionalInteger(form.近90天销量);
-    if (Number.isNaN(sales90)) {
-      toast.error("近90天销量必须是整数");
-      return;
-    }
-
-    const ebayAveragePrice = parseOptionalMoney(form.eBay平均售价);
-    if (Number.isNaN(ebayAveragePrice)) {
-      toast.error("eBay平均售价必须是数字");
-      return;
-    }
-
-    const me = await fetch("/api/auth/me")
-      .then((response) => response.json())
-      .catch(() => null) as { name?: string | null } | null;
-    if (!me?.name) {
-      toast.error("登录状态失效，请重新登录");
-      return;
-    }
-
-    const payload: Record<string, unknown> = {
-      OEM码: form.OEM码.trim(),
-      品牌: form.品牌.trim(),
-      商品链接: form.商品链接.trim(),
-      英文名称: form.英文名称.trim(),
-      中文名称: form.中文名称.trim(),
-      选品备注: form.选品备注.trim(),
-      登记人: me.name,
-      登记时间: new Date().toISOString(),
-      选品阶段: "初选待处理",
-    };
-    if (sales90 !== undefined) payload.近90天销量 = sales90;
-    if (ebayAveragePrice !== undefined) payload.eBay平均售价 = ebayAveragePrice;
-
-    const ok = await submit("sourcing", payload);
-    if (ok) setForm({ ...defaultForm });
-  };
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">选品登记</CardTitle>
-        <CardDescription>登记候选商品，写入 16_选品池，并进入初选待处理视图。</CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <div>
-          <p className="mb-2 text-xs font-medium text-gray-500">商品身份</p>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <div>
-              <label className="text-[10px] text-gray-400">OEM码 *</label>
-              <Input {...f("OEM码")} placeholder="如 84306-0E010" />
-            </div>
-            <div>
-              <label className="text-[10px] text-gray-400">品牌</label>
-              <Input {...f("品牌")} placeholder="Toyota / Honda" />
-            </div>
-            <div>
-              <label className="text-[10px] text-gray-400">商品链接</label>
-              <Input {...f("商品链接")} placeholder="https://www.ebay.com/itm/..." />
-            </div>
-          </div>
-        </div>
-
-        <Separator />
-
-        <div>
-          <p className="mb-2 text-xs font-medium text-gray-500">商品名称</p>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div>
-              <label className="text-[10px] text-gray-400">英文名称 *</label>
-              <Input {...f("英文名称")} placeholder="Steering Wheel Clock Spring" />
-            </div>
-            <div>
-              <label className="text-[10px] text-gray-400">中文名称 *</label>
-              <Input {...f("中文名称")} placeholder="方向盘游丝" />
-            </div>
-          </div>
-        </div>
-
-        <Separator />
-
-        <div>
-          <p className="mb-2 text-xs font-medium text-gray-500">市场数据与备注</p>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div>
-              <label className="text-[10px] text-gray-400">近90天销量</label>
-              <Input {...f("近90天销量")} type="number" min="0" step="1" placeholder="如 120" />
-            </div>
-            <div>
-              <label className="text-[10px] text-gray-400">eBay平均售价 ($)</label>
-              <Input {...f("eBay平均售价")} type="number" min="0" step="0.01" placeholder="如 29.99" />
-            </div>
-            <div className="sm:col-span-2">
-              <label className="text-[10px] text-gray-400">备注</label>
-              <Input {...f("选品备注")} placeholder="竞争情况、车型适配、风险点等" />
-            </div>
-          </div>
-        </div>
-
-        <Button onClick={handleSubmit} disabled={submitting} className="w-full">
-          {submitting ? "提交中..." : "提交选品记录"}
-        </Button>
-      </CardContent>
-    </Card>
-  );
 }
 
 // ==============================================================
