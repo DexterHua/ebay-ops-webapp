@@ -184,6 +184,32 @@ describe("本地飞书分页", () => {
     expect(execFileMock.mock.calls.map((call) => (call[1] as string[])[1])).toEqual(["+field-list", "+record-list"]);
   });
 
+  it("Netlify 运行时即使存在本机 CLI 路径也不降级", async () => {
+    vi.stubEnv("NETLIFY", "true");
+    vi.stubEnv("LARK_BASE_TOKEN", "base-token");
+    vi.stubEnv("LARK_TABLE_SKU", "sku-table");
+    vi.stubEnv("LARK_APP_ID", "app-id");
+    vi.stubEnv("LARK_APP_SECRET", "app-secret");
+    vi.stubEnv("LARK_CLI_PATH", "/Users/chequan/.nvm/versions/node/v24.15.0/bin/lark-cli");
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.includes("/auth/v3/tenant_access_token/internal")) {
+        return new Response(JSON.stringify({
+          code: 0,
+          tenant_access_token: "tenant-token",
+          expire: 7200,
+        }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      return new Response(JSON.stringify({
+        code: 1254302,
+        msg: "RolePermNotAllow",
+      }), { status: 200, headers: { "Content-Type": "application/json" } });
+    });
+
+    await expect(listLarkRecords("sku", 10)).rejects.toThrow("RolePermNotAllow");
+    expect(execFileMock).not.toHaveBeenCalled();
+  });
+
   it("按剩余读取额度限制 CLI 单页数量，并保留截断标记", async () => {
     vi.stubEnv("LARK_BASE_TOKEN", "base-token");
     vi.stubEnv("LARK_TABLE_SKU", "sku-table");

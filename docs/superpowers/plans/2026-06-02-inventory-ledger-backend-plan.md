@@ -349,8 +349,8 @@ Run sequentially:
 
 ```bash
 lark-cli base +table-list --base-token "$LARK_BASE_TOKEN" --as user
-lark-cli base +field-list --base-token "$LARK_BASE_TOKEN" --table-id tbl7aa7a0MaSsUSr --as user
-lark-cli base +field-list --base-token "$LARK_BASE_TOKEN" --table-id tblaVriWnH87co3h --as user
+lark-cli base +field-list --base-token "$LARK_BASE_TOKEN" --table-id "$LARK_TABLE_STOCK_FLOW" --as user
+lark-cli base +field-list --base-token "$LARK_BASE_TOKEN" --table-id "$LARK_TABLE_SKU_SUMMARY" --as user
 ```
 
 Expected: 返回当前表清单、`02_库存流水` 和 `19_SKU运营汇总` 字段。不要并发执行这些 list 命令。
@@ -412,7 +412,7 @@ Expected: 关联字段和公式字段创建成功。若公式解析失败，停�
 `账面总量` 使用公式：
 
 ```bash
-lark-cli base +field-create --base-token "$LARK_BASE_TOKEN" --table-id tblaVriWnH87co3h --json '{"name":"账面总量","type":"formula","expression":"[总可用库存] + [异常暂存]"}' --as user --i-have-read-guide
+lark-cli base +field-create --base-token "$LARK_BASE_TOKEN" --table-id "$LARK_TABLE_SKU_SUMMARY" --json '{"name":"账面总量","type":"formula","expression":"[总可用库存] + [异常暂存]"}' --as user --i-have-read-guide
 ```
 
 - [ ] **Step 6: 更新高级权限**

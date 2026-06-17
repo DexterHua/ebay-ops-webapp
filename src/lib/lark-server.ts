@@ -79,6 +79,9 @@ function hasLarkOpenApiCredentials(): boolean {
 }
 
 function canFallbackToLocalLarkCli(): boolean {
+  if (process.env.NETLIFY === "true" || process.env.NETLIFY_BLOBS_CONTEXT || (globalThis as { netlifyBlobsContext?: unknown }).netlifyBlobsContext) {
+    return false;
+  }
   return Boolean(process.env.LARK_CLI_PATH?.trim());
 }
 
