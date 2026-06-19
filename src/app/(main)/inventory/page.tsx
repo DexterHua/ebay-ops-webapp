@@ -8,6 +8,15 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { callAIStructured } from "@/lib/ai";
+import {
+  countInTransitInventorySkus,
+  countUniqueInventorySkusByState,
+  normalizeInventoryDetailForSummary,
+  summarizeInventoryQuantityByState,
+  summarizeInTransitInventoryBySku,
+  sumInventoryQuantityByState,
+  sumInTransitInventoryQuantity,
+} from "@/lib/inventory-flow";
 import { INVENTORY_SYSTEM_PROMPT, buildInventoryUserMessage } from "@/lib/prompts";
 import { toast } from "sonner";
 import { PackageSearch, Sparkles } from "lucide-react";
@@ -131,6 +140,10 @@ interface AIAnalysisResult {
 
 export default function InventoryPage() {
   const [skus, setSkus] = useState<SkuForAI[]>([]);
+  const [pendingCountingSkuCount, setPendingCountingSkuCount] = useState(0);
+  const [inTransitSkuCount, setInTransitSkuCount] = useState(0);
+  const [inTransitQuantity, setInTransitQuantity] = useState(0);
+  const [sellableQuantity, setSellableQuantity] = useState(0);
   const [skusLoading, setSkusLoading] = useState(true);
   const [skusError, setSkusError] = useState("");
   const [analyzing, setAnalyzing] = useState(false);
@@ -140,18 +153,20 @@ export default function InventoryPage() {
   // 页面加载时组合读取 SKU 静态资料、库存策略与运营汇总。
   const fetchSkus = useCallback(async () => {
     try {
-      const [skuRes, strategyRes, summaryRes] = await Promise.all([
+      const [skuRes, strategyRes, summaryRes, inventoryDetailRes] = await Promise.all([
         fetch("/api/lark?table=sku&limit=200"),
         fetch("/api/lark?table=strategy&limit=200"),
         fetch("/api/lark?table=summary&limit=200"),
+        fetch("/api/inventory-flow/data?resource=details"),
       ]);
-      const [skuJson, strategyJson, summaryJson] = await Promise.all([
+      const [skuJson, strategyJson, summaryJson, inventoryDetailJson] = await Promise.all([
         skuRes.json(),
         strategyRes.json(),
         summaryRes.json(),
+        inventoryDetailRes.json(),
       ]);
-      if (!skuJson.success || !strategyJson.success || !summaryJson.success) {
-        setSkusError(skuJson.error || strategyJson.error || summaryJson.error || "读取飞书数据失败");
+      if (!skuJson.success || !strategyJson.success || !summaryJson.success || !inventoryDetailJson.success) {
+        setSkusError(skuJson.error || strategyJson.error || summaryJson.error || inventoryDetailJson.error || "读取飞书数据失败");
         return;
       }
 
@@ -160,6 +175,15 @@ export default function InventoryPage() {
       );
       const summaryBySku = new Map(
         (summaryJson.data as LarkSkuRecord[]).map((row) => [row.SKU, row]),
+      );
+      const inventoryDetails = (inventoryDetailJson.data as Array<Record<string, unknown>>)
+        .map(normalizeInventoryDetailForSummary)
+        .filter((detail): detail is NonNullable<typeof detail> => Boolean(detail));
+      const inTransitBySku = new Map(
+        summarizeInTransitInventoryBySku(inventoryDetails).map((item) => [item.SKU, item.quantity]),
+      );
+      const sellableBySku = new Map(
+        summarizeInventoryQuantityByState(inventoryDetails, "橙联可售").map((item) => [item.SKU, item.quantity]),
       );
       const converted = (skuJson.data as LarkSkuRecord[])
         .filter((r) => r.SKU && r.中文品名) // 至少要有 SKU 和品名
@@ -172,8 +196,8 @@ export default function InventoryPage() {
           return {
             sku: r.SKU || "",
             productName: r.中文品名 || "",
-            available: toLarkNumber(summary?.橙联可售),
-            inTransit: toLarkNumber(summary?.橙联在途),
+            available: sellableBySku.get(r.SKU || "") || 0,
+            inTransit: inTransitBySku.get(r.SKU || "") || 0,
             local: toLarkNumber(summary?.本地库存),
             dailySales,
             salesTrend: hasSalesData ? "已有销售数据" : dailySales > 0 ? "人工估算" : "尚无销售数据",
@@ -189,8 +213,12 @@ export default function InventoryPage() {
         });
 
       setSkus(converted);
+      setPendingCountingSkuCount(countUniqueInventorySkusByState(inventoryDetails, "本地仓待清点"));
+      setInTransitSkuCount(countInTransitInventorySkus(inventoryDetails));
+      setInTransitQuantity(sumInTransitInventoryQuantity(inventoryDetails));
+      setSellableQuantity(sumInventoryQuantityByState(inventoryDetails, "橙联可售"));
       toast.success(`已加载 ${converted.length} 个 SKU`, {
-        description: "数据来源：01_SKU主数据 + 18_SKU库存策略 + 19_SKU运营汇总",
+        description: "数据来源：01_SKU主数据 + 18_SKU库存策略 + 19_SKU运营汇总 + 22_SKU批次库存明细",
       });
     } catch {
       setSkusError("网络请求失败");
@@ -302,15 +330,9 @@ export default function InventoryPage() {
     }
   };
 
-  // 统计各状态的 SKU 数量
-  const statusCounts = skus.reduce<Record<string, number>>((acc, s) => {
-    acc[s.status] = (acc[s.status] || 0) + 1;
-    return acc;
-  }, {});
-
-  const totalInTransit = skus.reduce((sum, s) => sum + s.inTransit, 0);
+  const totalInTransit = inTransitQuantity;
   const totalLocal = skus.reduce((sum, s) => sum + s.local, 0);
-  const totalAvailable = skus.reduce((sum, s) => sum + s.available, 0);
+  const totalAvailable = sellableQuantity;
 
   return (
     <div className="app-page max-w-6xl">
@@ -375,7 +397,7 @@ export default function InventoryPage() {
           </Card>
           <Card>
             <CardContent className="p-3 text-center">
-              <p className="text-xs text-gray-400">橙联在途</p>
+              <p className="text-xs text-gray-400">在途商品数量</p>
               <p className="text-2xl font-bold text-blue-600">
                 {inventoryCountFormatter.format(totalInTransit)}
                 <span className="ml-1 text-xs font-normal text-gray-400">件</span>
@@ -395,7 +417,7 @@ export default function InventoryPage() {
             <CardContent className="p-3 text-center">
               <p className="text-xs text-gray-400">在途 SKU</p>
               <p className="text-2xl font-bold text-blue-600">
-                {statusCounts["橙联在途"] || 0}
+                {inTransitSkuCount}
                 <span className="text-xs font-normal text-gray-400 ml-1">个SKU</span>
               </p>
             </CardContent>
@@ -404,7 +426,7 @@ export default function InventoryPage() {
             <CardContent className="p-3 text-center">
               <p className="text-xs text-gray-400">待清点 SKU</p>
               <p className="text-2xl font-bold text-yellow-600">
-                {statusCounts["待清点"] || 0}
+                {pendingCountingSkuCount}
                 <span className="text-xs font-normal text-gray-400 ml-1">个SKU</span>
               </p>
             </CardContent>

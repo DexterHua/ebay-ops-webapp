@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   createAndBindShipment,
   createPurchaseReceipt,
+  reconcileInventorySummaries,
   resolveInventoryException,
   transitionInventoryDetails,
   type InventoryBatchRepository,
@@ -21,6 +22,8 @@ class MemoryInventoryRepo implements InventoryBatchRepository {
   stockFlows = new Map<string, Record<string, unknown>>();
   summaries = new Map<string, Record<string, unknown>>();
   failStockFlowIds = new Set<string>();
+  dropStockFlowIds = new Set<string>();
+  failSummarySkus = new Set<string>();
   failShipmentBatchWith = "";
 
   async getTransaction(transactionId: string) {
@@ -49,6 +52,10 @@ class MemoryInventoryRepo implements InventoryBatchRepository {
     return detailIds.map((id) => this.details.get(id)).filter((detail): detail is InventoryDetail => Boolean(detail));
   }
 
+  async listInventoryDetails() {
+    return [...this.details.values()];
+  }
+
   async updateInventoryDetail(detailId: string, detail: InventoryDetail) {
     this.details.set(detailId, { ...(this.details.get(detailId) || {}), ...detail });
   }
@@ -69,7 +76,12 @@ class MemoryInventoryRepo implements InventoryBatchRepository {
 
   async upsertStockFlow(flowId: string, fields: Record<string, unknown>) {
     if (this.failStockFlowIds.has(flowId)) throw new Error(`模拟流水写入失败：${flowId}`);
+    if (this.dropStockFlowIds.has(flowId)) return;
     this.stockFlows.set(flowId, { ...(this.stockFlows.get(flowId) || {}), ...fields });
+  }
+
+  async listStockFlowsByTransaction(transactionId: string) {
+    return [...this.stockFlows.values()].filter((flow) => flow.流转事务号 === transactionId);
   }
 
   async listInventoryDetailsBySku(skus: string[]) {
@@ -82,6 +94,7 @@ class MemoryInventoryRepo implements InventoryBatchRepository {
   }
 
   async updateSkuSummary(sku: string, fields: Record<string, unknown>) {
+    if (this.failSummarySkus.has(sku)) throw new Error(`模拟汇总写入失败：${sku}`);
     this.summaries.set(sku, { SKU: sku, ...fields });
   }
 }
@@ -585,6 +598,84 @@ describe("inventory batch server", () => {
     });
     expect(repo.summaries.get("SKU-1")).toMatchObject({ 本地库存: 20, 国内集货仓: 80, 总可用库存: 100 });
     expect(repo.transactions.get("TX-MOVE-2")).toMatchObject({ status: "completed" });
+  });
+
+  it("状态推进完成前会校验流水完整性，缺失流水时事务保持 pending 并记录失败原因", async () => {
+    const repo = new MemoryInventoryRepo();
+    await createPurchaseReceipt(repo, purchaseInput({ lines: [{ sku: "SKU-1", quantity: 100 }] }));
+    await transitionInventoryDetails(repo, {
+      transactionId: "TX-MOVE-1",
+      operator: "运营",
+      now: 1780400001000,
+      items: [{ detailId: "LOT-PO-202606-001-SKU-1-1", quantity: 100, expectedVersion: 1, nextState: "待包装" }],
+    });
+
+    repo.dropStockFlowIds.add("TX-MOVE-2-LOT-PO-202606-001-SKU-1-1-1");
+
+    await expect(transitionInventoryDetails(repo, {
+      transactionId: "TX-MOVE-2",
+      operator: "运营",
+      now: 1780400002000,
+      items: [
+        { detailId: "LOT-PO-202606-001-SKU-1-1", quantity: 100, expectedVersion: 2, nextState: "已发往国内集货仓" },
+      ],
+    })).rejects.toThrow("库存流水缺失");
+
+    expect(repo.transactions.get("TX-MOVE-2")).toMatchObject({
+      status: "pending",
+      failureReason: expect.stringContaining("库存流水缺失"),
+      operationType: "状态推进",
+      operator: "运营",
+    });
+    expect(repo.transactions.get("TX-MOVE-2")?.recoveryContext).toContain("LOT-PO-202606-001-SKU-1-1");
+  });
+
+  it("汇总重算失败时事务保持 pending 并记录可重试上下文", async () => {
+    const repo = new MemoryInventoryRepo();
+    await createPurchaseReceipt(repo, purchaseInput({ lines: [{ sku: "SKU-1", quantity: 100 }] }));
+    repo.failSummarySkus.add("SKU-1");
+
+    await expect(transitionInventoryDetails(repo, {
+      transactionId: "TX-MOVE-SUMMARY-FAIL",
+      operator: "运营",
+      now: 1780400001000,
+      items: [
+        { detailId: "LOT-PO-202606-001-SKU-1-1", quantity: 100, expectedVersion: 1, nextState: "待包装" },
+      ],
+    })).rejects.toThrow("模拟汇总写入失败");
+
+    expect(repo.transactions.get("TX-MOVE-SUMMARY-FAIL")).toMatchObject({
+      status: "pending",
+      failureReason: expect.stringContaining("模拟汇总写入失败"),
+      operationType: "状态推进",
+      operator: "运营",
+    });
+    expect(repo.transactions.get("TX-MOVE-SUMMARY-FAIL")?.recoveryContext).toContain("SKU-1");
+  });
+
+  it("可从库存明细重算 SKU 汇总，清除已经不存在的橙联在途数量", async () => {
+    const repo = new MemoryInventoryRepo();
+    await createPurchaseReceipt(repo, purchaseInput({ lines: [{ sku: "SKU-1", quantity: 100 }] }));
+    repo.summaries.set("SKU-1", {
+      SKU: "SKU-1",
+      本地库存: 0,
+      国内集货仓: 0,
+      橙联在途: 206,
+      橙联可售: 0,
+      异常暂存: 0,
+      总可用库存: 206,
+      账面总量: 206,
+    });
+
+    const result = await reconcileInventorySummaries(repo, { skus: ["sku-1"] });
+
+    expect(result).toEqual({ skus: ["SKU-1"], updated: 1 });
+    expect(repo.summaries.get("SKU-1")).toMatchObject({
+      本地库存: 100,
+      橙联在途: 0,
+      总可用库存: 100,
+      账面总量: 100,
+    });
   });
 
   it("实收少于预期时创建库存异常并转入异常暂存", async () => {

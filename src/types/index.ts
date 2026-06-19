@@ -137,7 +137,7 @@ export const MODULES = [
       { id: "sourcingRegister", name: "选品登记", path: "/sourcing/register", description: "录入候选商品并进入初选待处理" },
       { id: "sourcingReview", name: "初选处理", path: "/sourcing/review", description: "运营或主管填写初选结果与最高购入价" },
       { id: "sourcingQuotePending", name: "待询价清单", path: "/sourcing/quote-pending", description: "采购接收已入选的待询价商品" },
-      { id: "sourcingQuoting", name: "询价中", path: "/sourcing/quoting", description: "维护供应商和报价进展" },
+      { id: "sourcingQuoting", name: "利润评估", path: "/sourcing/quoting", description: "根据询价结果判断利润是否达标" },
       { id: "sourcingCompleted", name: "已完成", path: "/sourcing/completed", description: "查看已经完成询价的选品记录" },
       { id: "sourcingRejected", name: "未入选", path: "/sourcing/rejected", description: "查看初选未入选的候选商品" },
     ],

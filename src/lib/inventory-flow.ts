@@ -95,6 +95,136 @@ export function buildLocationLedger(current: InventoryState, next: InventoryStat
   ];
 }
 
+function toInventoryText(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (typeof value === "number") return String(value);
+  if (Array.isArray(value)) return value.map(toInventoryText).find(Boolean) || "";
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    for (const key of ["text", "value", "name", "number"]) {
+      if (key in record) {
+        const text = toInventoryText(record[key]);
+        if (text) return text;
+      }
+    }
+  }
+  return "";
+}
+
+export function toInventoryNumber(value: unknown): number {
+  if (typeof value === "number") return Number.isFinite(value) ? value : 0;
+  if (typeof value === "string") {
+    const normalized = value.trim().replace(/,/g, "");
+    if (!normalized) return 0;
+    const parsed = Number(normalized.endsWith("%") ? normalized.slice(0, -1) : normalized);
+    if (!Number.isFinite(parsed)) return 0;
+    return normalized.endsWith("%") ? parsed / 100 : parsed;
+  }
+  if (Array.isArray(value)) return value.reduce((sum, item) => sum + toInventoryNumber(item), 0);
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    for (const key of ["value", "text", "number"]) {
+      if (key in record) return toInventoryNumber(record[key]);
+    }
+  }
+  return 0;
+}
+
+export function normalizeInventoryDetailForSummary(row: {
+  SKU?: unknown;
+  当前数量?: unknown;
+  当前状态?: unknown;
+}): Pick<InventoryDetail, "SKU" | "当前数量" | "当前状态"> | undefined {
+  const sku = toInventoryText(row.SKU).trim();
+  if (!sku) return undefined;
+  return {
+    SKU: sku,
+    当前数量: toInventoryNumber(row.当前数量),
+    当前状态: toInventoryText(row.当前状态) as InventoryState,
+  };
+}
+
+export function countUniqueInventorySkusByState(
+  details: Array<Pick<InventoryDetail, "SKU" | "当前数量" | "当前状态">>,
+  state: InventoryState,
+): number {
+  const skus = new Set<string>();
+  for (const detail of details) {
+    if (detail.当前状态 === state && detail.当前数量 > 0) {
+      skus.add(detail.SKU);
+    }
+  }
+  return skus.size;
+}
+
+export function sumInventoryQuantityByState(
+  details: Array<Pick<InventoryDetail, "当前数量" | "当前状态">>,
+  state: InventoryState,
+): number {
+  let quantity = 0;
+  for (const detail of details) {
+    if (detail.当前状态 === state && detail.当前数量 > 0) {
+      quantity = safeAdd(quantity, detail.当前数量);
+    }
+  }
+  return quantity;
+}
+
+export function summarizeInventoryQuantityByState(
+  details: Array<Pick<InventoryDetail, "SKU" | "当前数量" | "当前状态">>,
+  state: InventoryState,
+): Array<{ SKU: string; quantity: number }> {
+  const summaryBySku = new Map<string, number>();
+  for (const detail of details) {
+    if (detail.当前状态 === state && detail.当前数量 > 0) {
+      summaryBySku.set(detail.SKU, safeAdd(summaryBySku.get(detail.SKU) || 0, detail.当前数量));
+    }
+  }
+  return [...summaryBySku.entries()].map(([SKU, quantity]) => ({ SKU, quantity }));
+}
+
+const NON_TRANSIT_SKU_STATES = new Set<InventoryState>(["本地仓待清点", "待包装", "橙联可售"]);
+
+function isTransitInventoryDetail(detail: Pick<InventoryDetail, "当前数量" | "当前状态">): boolean {
+  return detail.当前数量 > 0 && !NON_TRANSIT_SKU_STATES.has(detail.当前状态);
+}
+
+export function countInTransitInventorySkus(
+  details: Array<Pick<InventoryDetail, "SKU" | "当前数量" | "当前状态">>,
+): number {
+  const skus = new Set<string>();
+  for (const detail of details) {
+    if (isTransitInventoryDetail(detail)) {
+      skus.add(detail.SKU);
+    }
+  }
+  return skus.size;
+}
+
+export function sumInTransitInventoryQuantity(
+  details: Array<Pick<InventoryDetail, "当前数量" | "当前状态">>,
+): number {
+  let quantity = 0;
+  for (const detail of details) {
+    if (isTransitInventoryDetail(detail)) {
+      quantity = safeAdd(quantity, detail.当前数量);
+    }
+  }
+  return quantity;
+}
+
+export function summarizeInTransitInventoryBySku(
+  details: Array<Pick<InventoryDetail, "SKU" | "当前数量" | "当前状态">>,
+): Array<{ SKU: string; quantity: number }> {
+  const summaryBySku = new Map<string, number>();
+  for (const detail of details) {
+    if (isTransitInventoryDetail(detail)) {
+      summaryBySku.set(detail.SKU, safeAdd(summaryBySku.get(detail.SKU) || 0, detail.当前数量));
+    }
+  }
+  return [...summaryBySku.entries()].map(([SKU, quantity]) => ({ SKU, quantity }));
+}
+
 export function planDetailTransition(input: {
   detail: InventoryDetail;
   quantity: number;

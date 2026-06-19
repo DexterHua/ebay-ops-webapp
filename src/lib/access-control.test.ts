@@ -46,7 +46,7 @@ describe("访问权限规则", () => {
       ["选品登记", "/sourcing/register"],
       ["初选处理", "/sourcing/review"],
       ["待询价清单", "/sourcing/quote-pending"],
-      ["询价中", "/sourcing/quoting"],
+      ["利润评估", "/sourcing/quoting"],
       ["已完成", "/sourcing/completed"],
       ["未入选", "/sourcing/rejected"],
     ]);

@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
+import { buildSkuMasterPayload, defaultSkuMasterForm } from "@/lib/data-entry-sku";
 
 // ============================================================
 // 数据录入 — 高频表单
@@ -87,24 +88,30 @@ function useSubmit() {
   return { submitting, submit };
 }
 
+async function currentUserName(): Promise<string> {
+  const me = await fetch("/api/auth/me")
+    .then((response) => response.json())
+    .catch(() => null) as { name?: string | null } | null;
+  if (!me?.name) throw new Error("登录状态失效，请重新登录");
+  return me.name;
+}
+
 // ==============================================================
 //  SKU 主数据录入
 // ==============================================================
 function SkuForm() {
   const { submitting, submit } = useSubmit();
-  const defaultForm = {
-    SKU: "", 中文品名: "", 英文标题关键词: "", OEM: "",
-    类目: "Others", 供应商: "KY", SKU状态: "待清点", 风险标签: "低风险",
-    "商品毛重（g）": "", "商品尺寸（含包装）（cm）": "", 负责人: "", 描述: "", 备注: "",
-  };
+  const defaultForm = defaultSkuMasterForm;
   const [form, setForm] = useState(defaultForm);
-
-  const numericFields = ["商品毛重（g）"];
 
   const handleSubmit = async () => {
     if (!form.SKU || !form.中文品名) { toast.error("请至少填写 SKU 和 中文品名"); return; }
-    const payload: Record<string, unknown> = { ...form };
-    numericFields.forEach(k => { payload[k] = parseFloat(form[k as keyof typeof form]) || 0; });
+    const ownerName = await currentUserName().catch((error: unknown) => {
+      toast.error(error instanceof Error ? error.message : "登录状态失效，请重新登录");
+      return "";
+    });
+    if (!ownerName) return;
+    const payload = buildSkuMasterPayload(form, ownerName);
     await submit("skuMaster", payload);
     setForm({ ...defaultForm });
   };
@@ -134,10 +141,9 @@ function SkuForm() {
       <div>
         <p className="text-xs font-medium text-gray-500 mb-2">状态与分类</p>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <div><label className="text-[10px] text-gray-400">SKU状态</label><Select value={form.SKU状态} onValueChange={(v) => setForm({...form, SKU状态: v || "待清点"})}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent><ScrollArea className="max-h-48">{["已上架","橙联在途","待入仓","待清点","待质检","待拍照","待贴标","滞销","停售"].map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}</ScrollArea></SelectContent></Select></div>
-          <div><label className="text-[10px] text-gray-400">供应商</label><Select value={form.供应商} onValueChange={(v) => setForm({...form, 供应商: v || "KY"})}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{["HB","KY","DY","JX","YC","MD"].map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent></Select></div>
+          <div><label className="text-[10px] text-gray-400">供应商</label><Input {...f("供应商")} placeholder="如 KY / 供应商名称" /></div>
           <div><label className="text-[10px] text-gray-400">风险标签</label><Select value={form.风险标签} onValueChange={(v) => setForm({...form, 风险标签: v || "低风险"})}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{["低风险","带电/认证需复核"].map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent></Select></div>
-          <div><label className="text-[10px] text-gray-400">负责人</label><Input {...f("负责人")} placeholder="刘渊/严娅/车泉" /></div>
+          <div><label className="text-[10px] text-gray-400">商品图片</label><Input {...f("商品图片")} placeholder="https://..." /></div>
           <div><label className="text-[10px] text-gray-400">描述</label><Input {...f("描述")} placeholder="产品用途/卖点摘要" /></div>
           <div><label className="text-[10px] text-gray-400">备注</label><Input {...f("备注")} /></div>
         </div>
