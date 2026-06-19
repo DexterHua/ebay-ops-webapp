@@ -11,6 +11,13 @@ import {
   PieChart, Pie, Cell,
 } from "recharts";
 import { CircleCheckBig } from "lucide-react";
+import {
+  normalizeInventoryDetailForSummary,
+  summarizeInventoryQuantityByState,
+  summarizeInTransitInventoryBySku,
+  sumInventoryQuantityByState,
+  sumInTransitInventoryQuantity,
+} from "@/lib/inventory-flow";
 
 // ============================================================
 // 运营仪表盘
@@ -35,6 +42,8 @@ export default function DashboardPage() {
   const [skus, setSkus] = useState<SkuData[]>([]);
   const [issues, setIssues] = useState<IssueData[]>([]);
   const [sales, setSales] = useState<SalesData[]>([]);
+  const [inTransitQuantity, setInTransitQuantity] = useState(0);
+  const [sellableQuantity, setSellableQuantity] = useState(0);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -44,17 +53,34 @@ export default function DashboardPage() {
       fetch("/api/lark?table=strategy&limit=200").then(r => r.json()),
       fetch("/api/lark?table=issues&limit=200").then(r => r.json()),
       fetch("/api/lark?table=sales&limit=200").then(r => r.json()),
-    ]).then(([s, su, st, i, sa]) => {
-      if (s.success && su.success && st.success) {
+      fetch("/api/inventory-flow/data?resource=details").then(r => r.json()),
+    ]).then(([s, su, st, i, sa, id]) => {
+      if (s.success && su.success && st.success && id.success) {
         const summaryBySku = new Map((su.data || []).map((row: SkuData) => [row.SKU, row]));
         const strategyBySku = new Map((st.data || []).map((row: SkuData) => [row.SKU, row]));
+        const inventoryDetails = (id.data || [])
+          .map(normalizeInventoryDetailForSummary)
+          .filter((detail: ReturnType<typeof normalizeInventoryDetailForSummary>): detail is NonNullable<typeof detail> => Boolean(detail));
+        const inTransitBySku = new Map(
+          summarizeInTransitInventoryBySku(inventoryDetails).map((item) => [item.SKU, item.quantity]),
+        );
+        const sellableBySku = new Map(
+          summarizeInventoryQuantityByState(inventoryDetails, "橙联可售").map((item) => [item.SKU, item.quantity]),
+        );
+        setInTransitQuantity(sumInTransitInventoryQuantity(inventoryDetails));
+        setSellableQuantity(sumInventoryQuantityByState(inventoryDetails, "橙联可售"));
         setSkus((s.data || [])
           .filter((row: SkuData) => row.SKU && row.中文品名)
-          .map((row: SkuData) => ({
-            ...row,
-            ...(summaryBySku.get(row.SKU) || {}),
-            ...(strategyBySku.get(row.SKU) || {}),
-          })));
+          .map((row: SkuData) => {
+            const sku = row.SKU || "";
+            return {
+              ...row,
+              ...(summaryBySku.get(row.SKU) || {}),
+              ...(strategyBySku.get(row.SKU) || {}),
+              橙联在途: inTransitBySku.get(sku) || 0,
+              橙联可售: sellableBySku.get(sku) || 0,
+            };
+          }));
       }
       if (i.success) setIssues(i.data);
       if (sa.success) setSales(sa.data);
@@ -67,13 +93,13 @@ export default function DashboardPage() {
     total: skus.length,
     local: skus.reduce((a, s) => a + toNumber(s.本地库存), 0),
     domesticHub: skus.reduce((a, s) => a + toNumber(s.国内集货仓), 0),
-    inTransit: skus.reduce((a, s) => a + toNumber(s.橙联在途), 0),
-    available: skus.reduce((a, s) => a + toNumber(s.橙联可售), 0),
-    // 总货值 = 全部库存 × 采购价（本地 + 集货仓 + 在途 + 可售）
-    totalAllValue: skus.reduce((a, s) => a + toNumber(s.采购价) * (toNumber(s.本地库存) + toNumber(s.国内集货仓) + toNumber(s.橙联在途) + toNumber(s.橙联可售)), 0),
+    inTransit: inTransitQuantity,
+    available: sellableQuantity,
+    // 广义在途已包含国内集货仓相关状态，货值汇总避免重复相加。
+    totalAllValue: skus.reduce((a, s) => a + toNumber(s.采购价) * (toNumber(s.本地库存) + toNumber(s.橙联在途) + toNumber(s.橙联可售)), 0),
     // 移动货值 = 已离开本地仓的库存价值
-    totalBookValue: skus.reduce((a, s) => a + toNumber(s.采购价) * (toNumber(s.国内集货仓) + toNumber(s.橙联在途) + toNumber(s.橙联可售)), 0),
-  }), [skus]);
+    totalBookValue: skus.reduce((a, s) => a + toNumber(s.采购价) * (toNumber(s.橙联在途) + toNumber(s.橙联可售)), 0),
+  }), [skus, inTransitQuantity, sellableQuantity]);
 
   // 分店铺库存（从流程表推算分配：SKU轮流分3店）
   const storeInventory = useMemo(() => {
@@ -196,7 +222,7 @@ export default function DashboardPage() {
           <p className="page-kicker">Operations Dashboard</p>
           <h1 className="page-title">运营仪表盘</h1>
           <p className="page-description">
-            实时数据概览 · {skus.length} SKU · 总库存 {stats.inTransit + stats.domesticHub + stats.local + stats.available} 件 · 总货值 ¥{(stats.totalAllValue / 10000).toFixed(1)}万
+            实时数据概览 · {skus.length} SKU · 总库存 {stats.inTransit + stats.local + stats.available} 件 · 总货值 ¥{(stats.totalAllValue / 10000).toFixed(1)}万
           </p>
         </div>
       </div>
@@ -206,7 +232,7 @@ export default function DashboardPage() {
         <StatCard label="SKU总数" value={stats.total} color="text-blue-600" />
         <StatCard label="本地库存" value={`${stats.local}件`} color="text-emerald-600" />
         <StatCard label="国内集货仓" value={`${stats.domesticHub}件`} color="text-cyan-600" />
-        <StatCard label="橙联在途" value={`${stats.inTransit}件`} color="text-blue-600" />
+        <StatCard label="在途商品数量" value={`${stats.inTransit}件`} color="text-blue-600" />
         <StatCard label="橙联可售" value={`${stats.available}件`} sub={stats.available === 0 ? "待入仓上架" : ""} color={stats.available === 0 ? "text-gray-400" : "text-emerald-600"} />
         <StatCard label="总货值" value={`¥${(stats.totalAllValue/10000).toFixed(1)}万`} sub={`移动货值 ¥${(stats.totalBookValue/10000).toFixed(1)}万`} color="text-purple-600" />
       </div>
@@ -266,7 +292,7 @@ export default function DashboardPage() {
 
       {/* ---------- 在途 TOP10 + 国内集货仓 TOP10 ---------- */}
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-        <ChartCard title="橙联在途 TOP10" subtitle="头程在途数量最多的SKU">
+        <ChartCard title="在途商品数量 TOP10" subtitle="流转中数量最多的SKU">
           <ResponsiveContainer width="100%" height={320}>
             <BarChart data={inTransitTop} layout="vertical" margin={{ top: 0, right: 20, left: 60, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
@@ -452,7 +478,7 @@ export default function DashboardPage() {
                 {[
                   { label: "本地仓 (清点/包装)", desc: `${stats.local}件`, icon: "📦" },
                   { label: "国内集货仓 (待发运)", desc: `${stats.domesticHub}件`, icon: "🏭" },
-                  { label: "橙联在途 (海运中)", desc: `${stats.inTransit}件`, icon: "🚢" },
+                  { label: "在途商品数量", desc: `${stats.inTransit}件`, icon: "🚢" },
                 ].map(item => (
                   <div key={item.label} className="flex items-center justify-between p-3 bg-gray-50 rounded">
                     <div>

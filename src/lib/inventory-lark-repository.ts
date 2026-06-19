@@ -213,6 +213,12 @@ export function createLarkInventoryBatchRepository(): InventoryBatchRepository {
         .filter((detail) => detail.明细编号 && wanted.has(detail.明细编号));
     },
 
+    async listInventoryDetails() {
+      const result = await listLarkRecords("inventoryDetail");
+      if (result.hasMore) throw new Error("库存明细记录未完整读取，无法重算汇总");
+      return result.records.map((record) => detailFromFields(record.recordId, record.fields));
+    },
+
     async updateInventoryDetail(detailId, detail) {
       await upsertByTextField("inventoryDetail", "明细编号", detailId, detailToFields({ ...detail, 明细编号: detailId }));
     },
@@ -243,6 +249,14 @@ export function createLarkInventoryBatchRepository(): InventoryBatchRepository {
       } else {
         await createLarkRecords("stockFlow", [normalizedFields]);
       }
+    },
+
+    async listStockFlowsByTransaction(transactionId) {
+      const result = await listLarkRecords("stockFlow");
+      if (result.hasMore) throw new Error("库存流水记录未完整读取，无法校验事务完整性");
+      return result.records
+        .map((record) => record.fields)
+        .filter((fields) => readLarkText(fields.流转事务号) === transactionId);
     },
 
     async listInventoryDetailsBySku(skus) {

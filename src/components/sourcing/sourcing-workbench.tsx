@@ -1,16 +1,25 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { Download } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
+import { buildSourcingExcelHtml, buildSourcingExportRows } from "@/lib/sourcing-export";
+import {
+  buildProfitReviewPatch,
+  resolveQuoteStage,
+  sourcingRecordMatchesFilter,
+  type ProfitReviewResult,
+  type SourcingFilter,
+} from "@/lib/sourcing-workflow";
 
-type SourcingMode = "review" | "quote" | "readonly";
-type SourcingFilter = "review" | "quotePending" | "quoting" | "completed" | "rejected";
+type SourcingMode = "review" | "quote" | "profitReview" | "readonly";
 
 type SourcingRecord = {
   recordId: string;
@@ -40,7 +49,7 @@ type SourcingRecord = {
 const FILTER_LABELS: Record<SourcingFilter, string> = {
   review: "初选待处理",
   quotePending: "待询价清单",
-  quoting: "询价中",
+  profitReview: "利润评估",
   completed: "已完成",
   rejected: "未入选",
 };
@@ -82,16 +91,6 @@ function urlFrom(value: unknown): string {
   return collectText(value).find((item) => /^https?:\/\//i.test(item)) || "";
 }
 
-function matchesFilter(record: SourcingRecord, filter: SourcingFilter): boolean {
-  const stage = text(record.选品阶段);
-  const result = text(record.初选结果);
-  if (filter === "review") return !stage || stage === "初选待处理";
-  if (filter === "quotePending") return stage === "已入选待询价";
-  if (filter === "quoting") return stage === "询价中";
-  if (filter === "completed") return stage === "已完成";
-  return stage === "未入选" || result === "未入选";
-}
-
 async function currentUserName(): Promise<string> {
   const me = await fetch("/api/auth/me")
     .then((response) => response.json())
@@ -115,6 +114,8 @@ export function SourcingWorkbench({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const exportEnabled = filter === "quotePending";
 
   const readRecords = async (): Promise<SourcingRecord[]> => {
     const response = await fetch("/api/lark?table=sourcing");
@@ -151,9 +152,44 @@ export function SourcingWorkbench({
   };
 
   const visibleRecords = useMemo(
-    () => records.filter((record) => matchesFilter(record, filter)),
+    () => records.filter((record) => sourcingRecordMatchesFilter(record, filter)),
     [records, filter],
   );
+  const visibleIds = useMemo(() => visibleRecords.map((record) => record.recordId), [visibleRecords]);
+  const selectedRecords = useMemo(
+    () => visibleRecords.filter((record) => selectedIds.has(record.recordId)),
+    [visibleRecords, selectedIds],
+  );
+  const allVisibleSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedIds.has(id));
+
+  const toggleSelected = (recordId: string, checked: boolean) => {
+    setSelectedIds((current) => {
+      const next = new Set(current);
+      if (checked) next.add(recordId);
+      else next.delete(recordId);
+      return next;
+    });
+  };
+
+  const toggleAllVisible = (checked: boolean) => {
+    setSelectedIds(checked ? new Set(visibleIds) : new Set());
+  };
+
+  const exportSelected = () => {
+    if (selectedRecords.length === 0) return;
+    const html = buildSourcingExcelHtml(buildSourcingExportRows(selectedRecords));
+    const blob = new Blob(["\ufeff", html], { type: "application/vnd.ms-excel;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    const date = new Date().toISOString().slice(0, 10);
+    anchor.href = url;
+    anchor.download = `待询价清单-${date}.xls`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+    toast.success("Excel 已生成", { description: `已导出 ${selectedRecords.length} 条待询价记录` });
+  };
 
   const saveRecord = async (recordId: string, fields: Record<string, unknown>) => {
     setSavingId(recordId);
@@ -195,6 +231,27 @@ export function SourcingWorkbench({
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          {exportEnabled && !loading && !error && visibleRecords.length > 0 && (
+            <div className="flex flex-col gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 sm:flex-row sm:items-center sm:justify-between">
+              <label className="flex items-center gap-2 text-sm text-slate-600">
+                <Checkbox
+                  checked={allVisibleSelected}
+                  onChange={(event) => toggleAllVisible(event.currentTarget.checked)}
+                  aria-label="选择全部待询价记录"
+                />
+                <span>已选择 {selectedRecords.length} / {visibleRecords.length} 条</span>
+              </label>
+              <div className="flex gap-2">
+                <Button variant="outline" size="sm" onClick={() => toggleAllVisible(false)} disabled={selectedRecords.length === 0}>
+                  清空
+                </Button>
+                <Button size="sm" onClick={exportSelected} disabled={selectedRecords.length === 0}>
+                  <Download className="size-4" />
+                  导出 Excel
+                </Button>
+              </div>
+            </div>
+          )}
           {loading && <p className="text-sm text-slate-500">正在读取选品池...</p>}
           {error && <p className="text-sm text-red-500">{error}</p>}
           {!loading && !error && visibleRecords.length === 0 && (
@@ -208,6 +265,9 @@ export function SourcingWorkbench({
               record={record}
               mode={mode}
               saving={savingId === record.recordId}
+              selectable={exportEnabled}
+              selected={selectedIds.has(record.recordId)}
+              onSelectedChange={(checked) => toggleSelected(record.recordId, checked)}
               onSave={(fields) => saveRecord(record.recordId, fields)}
             />
           ))}
@@ -221,11 +281,17 @@ function SourcingRecordCard({
   record,
   mode,
   saving,
+  selectable = false,
+  selected = false,
+  onSelectedChange,
   onSave,
 }: {
   record: SourcingRecord;
   mode: SourcingMode;
   saving: boolean;
+  selectable?: boolean;
+  selected?: boolean;
+  onSelectedChange?: (checked: boolean) => void;
   onSave: (fields: Record<string, unknown>) => Promise<void>;
 }) {
   const link = urlFrom(record.商品链接);
@@ -233,33 +299,45 @@ function SourcingRecordCard({
   return (
     <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-        <div className="min-w-0 space-y-2">
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge variant="secondary">{text(record.选品阶段) || "初选待处理"}</Badge>
-            {text(record.初选结果) && <Badge variant="outline">{text(record.初选结果)}</Badge>}
-            <span className="text-xs text-slate-400">登记人：{text(record.登记人) || "-"}</span>
-          </div>
-          <div>
-            <h2 className="text-base font-semibold text-slate-900">{text(record.中文名称) || "未命名商品"}</h2>
-            <p className="text-sm text-slate-500">{text(record.英文名称) || "-"}</p>
-          </div>
-          <div className="grid grid-cols-2 gap-2 text-xs text-slate-500 sm:grid-cols-4">
-            <span>OEM：{text(record.OEM码) || "-"}</span>
-            <span>品牌：{text(record.品牌) || "-"}</span>
-            <span>90天销量：{text(record.近90天销量) || "-"}</span>
-            <span>eBay均价：{money(record.eBay平均售价, "$")}</span>
-          </div>
-          <p className="text-xs text-slate-400">登记时间：{dateText(record.登记时间)}</p>
-          {text(record.选品备注) && <p className="text-sm text-slate-600">备注：{text(record.选品备注)}</p>}
-          {link && (
-            <a className="text-xs font-medium text-orange-600 hover:underline" href={link} target="_blank" rel="noreferrer">
-              打开商品链接
-            </a>
+        <div className="flex min-w-0 gap-3">
+          {selectable && (
+            <div className="pt-1">
+              <Checkbox
+                checked={selected}
+                onChange={(event) => onSelectedChange?.(event.currentTarget.checked)}
+                aria-label={`选择 ${text(record.中文名称) || text(record.OEM码) || "待询价记录"}`}
+              />
+            </div>
           )}
+          <div className="min-w-0 space-y-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant="secondary">{text(record.选品阶段) || "初选待处理"}</Badge>
+              {text(record.初选结果) && <Badge variant="outline">{text(record.初选结果)}</Badge>}
+              <span className="text-xs text-slate-400">登记人：{text(record.登记人) || "-"}</span>
+            </div>
+            <div>
+              <h2 className="text-base font-semibold text-slate-900">{text(record.中文名称) || "未命名商品"}</h2>
+              <p className="text-sm text-slate-500">{text(record.英文名称) || "-"}</p>
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-xs text-slate-500 sm:grid-cols-4">
+              <span>OEM：{text(record.OEM码) || "-"}</span>
+              <span>品牌：{text(record.品牌) || "-"}</span>
+              <span>90天销量：{text(record.近90天销量) || "-"}</span>
+              <span>eBay均价：{money(record.eBay平均售价, "$")}</span>
+            </div>
+            <p className="text-xs text-slate-400">登记时间：{dateText(record.登记时间)}</p>
+            {text(record.选品备注) && <p className="text-sm text-slate-600">备注：{text(record.选品备注)}</p>}
+            {link && (
+              <a className="text-xs font-medium text-orange-600 hover:underline" href={link} target="_blank" rel="noreferrer">
+                打开商品链接
+              </a>
+            )}
+          </div>
         </div>
         <div className="w-full lg:w-80">
           {mode === "review" && <ReviewAction record={record} saving={saving} onSave={onSave} />}
           {mode === "quote" && <QuoteAction record={record} saving={saving} onSave={onSave} />}
+          {mode === "profitReview" && <ProfitReviewAction saving={saving} onSave={onSave} />}
           {mode === "readonly" && <ReadonlyProgress record={record} />}
         </div>
       </div>
@@ -341,7 +419,7 @@ function QuoteAction({
     }
     try {
       const purchaser = await currentUserName();
-      const stage = supplier.trim() && price !== undefined ? "已完成" : "询价中";
+      const stage = resolveQuoteStage({ supplier, price });
       await onSave({
         供应商: supplier.trim(),
         供应商报价: price,
@@ -363,6 +441,35 @@ function QuoteAction({
       <Textarea value={remark} onChange={(event) => setRemark(event.target.value)} placeholder="采购备注" />
       <Button className="w-full" onClick={submit} disabled={saving}>
         {saving ? "保存中..." : "保存询价信息"}
+      </Button>
+    </div>
+  );
+}
+
+function ProfitReviewAction({
+  saving,
+  onSave,
+}: {
+  saving: boolean;
+  onSave: (fields: Record<string, unknown>) => Promise<void>;
+}) {
+  const [result, setResult] = useState<ProfitReviewResult>("入选");
+
+  const submit = async () => {
+    await onSave(buildProfitReviewPatch(result));
+  };
+
+  return (
+    <div className="space-y-2 rounded-lg bg-slate-50 p-3">
+      <p className="text-xs font-medium text-slate-500">利润评估</p>
+      <Select value={result} onValueChange={(value) => setResult(value === "未入选" ? "未入选" : "入选")}>
+        <SelectTrigger><SelectValue /></SelectTrigger>
+        <SelectContent>
+          {(["入选", "未入选"] as const).map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}
+        </SelectContent>
+      </Select>
+      <Button className="w-full" onClick={submit} disabled={saving}>
+        {saving ? "保存中..." : "保存评估结果"}
       </Button>
     </div>
   );

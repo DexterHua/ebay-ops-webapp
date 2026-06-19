@@ -9,6 +9,7 @@
     "preview:cloudflare": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
     "preview:scheduled": "opennextjs-cloudflare build && wrangler dev --test-scheduled",
     "deploy:cloudflare": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
+    "release:check": "node scripts/check-release-safety.mjs",
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",

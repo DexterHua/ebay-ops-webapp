@@ -58,6 +58,11 @@ npm run dev
 ## 验证
 
 ```bash
+npm run release:check
 npm run lint
 npm run build
 ```
+
+## 发布策略
+
+生产发布改为由 GitHub `main` 触发 Netlify 自动部署，`develop` 只用于日常开发和验证。发布前先运行 `npm run release:check`，确认本地用户数据、飞书密钥和 Netlify 上传脚本没有进入 Git。详细流程见 `docs/deployment-reform.md`。

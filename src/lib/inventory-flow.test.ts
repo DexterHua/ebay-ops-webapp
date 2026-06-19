@@ -1,8 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
   buildLocationLedger,
+  countInTransitInventorySkus,
+  countUniqueInventorySkusByState,
   createOpeningDetails,
+  normalizeInventoryDetailForSummary,
   planDetailTransition,
+  summarizeInventoryQuantityByState,
+  summarizeInTransitInventoryBySku,
+  sumInventoryQuantityByState,
+  sumInTransitInventoryQuantity,
   summarizeDetails,
   type InventoryState,
   validateNextState,
@@ -34,6 +41,100 @@ describe("inventory flow", () => {
 
   it("同一仓内状态推进不产生库存扣增", () => {
     expect(buildLocationLedger("本地仓待清点", "待包装", 80)).toEqual([]);
+  });
+
+  it("按批次库存明细状态统计待清点 SKU 并去重", () => {
+    expect(countUniqueInventorySkusByState([
+      { SKU: "SKU-1", 当前数量: 10, 当前状态: "本地仓待清点" },
+      { SKU: "SKU-1", 当前数量: 5, 当前状态: "本地仓待清点" },
+      { SKU: "SKU-2", 当前数量: 8, 当前状态: "待包装" },
+      { SKU: "SKU-3", 当前数量: 0, 当前状态: "本地仓待清点" },
+    ], "本地仓待清点")).toBe(1);
+  });
+
+  it("在途 SKU 统计排除本地待清点、待包装和橙联可售并去重", () => {
+    expect(countInTransitInventorySkus([
+      { SKU: "SKU-1", 当前数量: 10, 当前状态: "本地仓待清点" },
+      { SKU: "SKU-2", 当前数量: 8, 当前状态: "待包装" },
+      { SKU: "SKU-3", 当前数量: 7, 当前状态: "已发往国内集货仓" },
+      { SKU: "SKU-3", 当前数量: 2, 当前状态: "国内集货仓待发" },
+      { SKU: "SKU-4", 当前数量: 6, 当前状态: "橙联在途" },
+      { SKU: "SKU-5", 当前数量: 5, 当前状态: "海外仓待上架" },
+      { SKU: "SKU-6", 当前数量: 4, 当前状态: "橙联可售" },
+      { SKU: "SKU-7", 当前数量: 0, 当前状态: "橙联在途" },
+    ])).toBe(3);
+  });
+
+  it("在途商品数量统计排除本地待清点、待包装和橙联可售", () => {
+    const details = [
+      { SKU: "SKU-1", 当前数量: 25, 当前状态: "本地仓待清点" as const },
+      { SKU: "SKU-2", 当前数量: 15, 当前状态: "待包装" as const },
+      { SKU: "SKU-A", 当前数量: 250, 当前状态: "已发往国内集货仓" as const },
+      { SKU: "SKU-B", 当前数量: 250, 当前状态: "国内集货仓待发" as const },
+      { SKU: "SKU-C", 当前数量: 251, 当前状态: "橙联在途" as const },
+      { SKU: "SKU-D", 当前数量: 251, 当前状态: "海外仓待上架" as const },
+      { SKU: "SKU-E", 当前数量: 99, 当前状态: "橙联可售" as const },
+    ];
+
+    expect(sumInTransitInventoryQuantity(details)).toBe(1002);
+    expect(summarizeInTransitInventoryBySku(details)).toEqual([
+      { SKU: "SKU-A", quantity: 250 },
+      { SKU: "SKU-B", quantity: 250 },
+      { SKU: "SKU-C", quantity: 251 },
+      { SKU: "SKU-D", quantity: 251 },
+    ]);
+  });
+
+  it("在途商品数量不依赖 SKU 主数据是否存在", () => {
+    const masterSkus = new Set(["SKU-C"]);
+    const details = [
+      { SKU: "TEST1234567", 当前数量: 500, 当前状态: "橙联在途" as const },
+      { SKU: "TEST7654321", 当前数量: 500, 当前状态: "橙联在途" as const },
+      { SKU: "SKU-C", 当前数量: 1, 当前状态: "橙联在途" as const },
+      { SKU: "1", 当前数量: 1, 当前状态: "橙联在途" as const },
+    ];
+
+    expect(sumInTransitInventoryQuantity(details)).toBe(1002);
+    expect(summarizeInTransitInventoryBySku(details)
+      .filter((item) => masterSkus.has(item.SKU))
+      .reduce((sum, item) => sum + item.quantity, 0)).toBe(1);
+  });
+
+  it("橙联可售商品数量直接按批次明细状态汇总，不依赖 SKU 主数据", () => {
+    const details = [
+      { SKU: "KNOWN-1", 当前数量: 1585, 当前状态: "橙联可售" as const },
+      { SKU: "TEST1234567", 当前数量: 500, 当前状态: "橙联可售" as const },
+      { SKU: "TEST7654321", 当前数量: 500, 当前状态: "橙联可售" as const },
+      { SKU: "SP80292SDA407B001", 当前数量: 1, 当前状态: "橙联可售" as const },
+      { SKU: "1", 当前数量: 1, 当前状态: "橙联可售" as const },
+      { SKU: "LOCAL-1", 当前数量: 30, 当前状态: "本地仓待清点" as const },
+    ];
+
+    expect(sumInventoryQuantityByState(details, "橙联可售")).toBe(2587);
+    expect(summarizeInventoryQuantityByState(details, "橙联可售")).toEqual([
+      { SKU: "KNOWN-1", quantity: 1585 },
+      { SKU: "TEST1234567", quantity: 500 },
+      { SKU: "TEST7654321", quantity: 500 },
+      { SKU: "SP80292SDA407B001", quantity: 1 },
+      { SKU: "1", quantity: 1 },
+    ]);
+  });
+
+  it("可从飞书字段格式规范化在途明细数量和状态", () => {
+    const details = [
+      normalizeInventoryDetailForSummary({ SKU: "SKU-A", 当前数量: { value: "250" }, 当前状态: ["已发往国内集货仓"] }),
+      normalizeInventoryDetailForSummary({ SKU: "SKU-B", 当前数量: ["251"], 当前状态: { text: "橙联在途" } }),
+      normalizeInventoryDetailForSummary({ SKU: "SKU-C", 当前数量: { number: 501 }, 当前状态: "海外仓待上架" }),
+      normalizeInventoryDetailForSummary({ SKU: "SKU-D", 当前数量: "99", 当前状态: "待包装" }),
+      normalizeInventoryDetailForSummary({ SKU: "", 当前数量: "1", 当前状态: "橙联在途" }),
+    ].filter((detail): detail is NonNullable<typeof detail> => Boolean(detail));
+
+    expect(sumInTransitInventoryQuantity(details)).toBe(1002);
+    expect(summarizeInTransitInventoryBySku(details)).toEqual([
+      { SKU: "SKU-A", quantity: 250 },
+      { SKU: "SKU-B", quantity: 251 },
+      { SKU: "SKU-C", quantity: 501 },
+    ]);
   });
 
   it("流水构造拒绝非法状态和数量", () => {
