@@ -5,5 +5,8 @@
 [build.environment]
   NODE_VERSION = "20"
 
+[context.production.environment]
+  LARK_WRITE_ENABLED = "true"
+
 [[plugins]]
   package = "@netlify/plugin-nextjs"
