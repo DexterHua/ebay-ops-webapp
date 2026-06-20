@@ -30,8 +30,8 @@
 6. Node version 保持 `20`。
 7. 插件保持 `@netlify/plugin-nextjs`。
 8. Branch deploys 只保留明确需要的分支；如果不需要预览，关闭 “all branches”。
-9. Deploy Previews/branch deploy 的环境变量中保持 `LARK_WRITE_ENABLED=false`。
-10. Production context 中只有确认业务允许写回飞书时才设置 `LARK_WRITE_ENABLED=true`。
+9. Deploy Previews/branch deploy 不设置 `LARK_WRITE_ENABLED=true`，保持只读。
+10. Production context 由仓库 `netlify.toml` 自动设置 `LARK_WRITE_ENABLED=true`；Netlify UI 不要用同名变量覆盖该值。
 
 ## 生产环境变量
 
@@ -73,8 +73,8 @@
 
 ### 飞书写入与自动扫描
 
-- `LARK_WRITE_ENABLED=false`：默认值，适合本地、preview、branch deploy
-- `LARK_WRITE_ENABLED=true`：仅 production 且确认要写业务 Base 时使用
+- `LARK_WRITE_ENABLED=false`：本地、preview、branch deploy 的默认只读状态
+- `LARK_WRITE_ENABLED=true`：由 `netlify.toml` 的 Production context 自动注入，不需要每次发布手动开启
 - `INVENTORY_SALES_SCAN_SECRET`：计划任务调用 `/api/inventory/sales-scan` 的 Bearer secret
 - `LARK_INVENTORY_ALERT_CHAT_ID`：库存扫描通知群，可为空
 
