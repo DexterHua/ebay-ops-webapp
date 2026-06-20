@@ -35,7 +35,7 @@
 
 ## 生产环境变量
 
-以下值只配置在 Netlify 环境变量中，不提交到 Git。
+除下文明确由仓库 `netlify.toml` 的 Production context 注入的 `LARK_WRITE_ENABLED` 外，以下生产值只配置在 Netlify 环境变量中，不提交到 Git。
 
 ### 登录与账号
 
@@ -73,8 +73,11 @@
 
 ### 飞书写入与自动扫描
 
-- `LARK_WRITE_ENABLED=false`：本地、preview、branch deploy 的默认只读状态
+- `LARK_WRITE_ENABLED=false`：本地 Next.js 开发、preview、branch deploy 的默认只读状态
 - `LARK_WRITE_ENABLED=true`：由 `netlify.toml` 的 Production context 自动注入，不需要每次发布手动开启
+
+Cloudflare/Wrangler 使用独立配置，不属于本 Netlify 发布流程。
+
 - `INVENTORY_SALES_SCAN_SECRET`：计划任务调用 `/api/inventory/sales-scan` 的 Bearer secret
 - `LARK_INVENTORY_ALERT_CHAT_ID`：库存扫描通知群，可为空
 

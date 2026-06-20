@@ -32,7 +32,7 @@ npm run dev
 
 ## 数据安全
 
-- 飞书写入在本地、Deploy Preview 和 branch deploy 中默认关闭；GitHub `main` 触发的 Netlify Production Deploy 通过 production context 自动设置 `LARK_WRITE_ENABLED=true`。
+- 飞书写入在本地 Next.js 开发（`npm run dev`）、Deploy Preview 和 branch deploy 中默认关闭；GitHub `main` 触发的 Netlify Production Deploy 通过 production context 自动设置 `LARK_WRITE_ENABLED=true`。
 - 飞书 Token、表 ID、CLI 路径和 JWT 密钥均通过环境变量注入，不应提交到仓库。
 - `data/users.json` 是本地账号持久化文件。后续部署前应迁移到正式账号存储，并使用专用密码哈希算法。
 - 如果历史提交中曾出现飞书 Token，应在飞书侧轮换 Token。
@@ -50,7 +50,7 @@ npm run dev
 | `TAVILY_API_KEY` | Tavily Search API Key，仅选品助手实时网页检索使用 |
 | `LARK_BASE_TOKEN` | 飞书多维表格 Token |
 | `LARK_CLI_PATH` | `lark-cli` 可执行文件路径，默认从 `PATH` 查找 |
-| `LARK_WRITE_ENABLED` | 是否允许写入飞书；本地和预览默认 `false`，Netlify Production 自动为 `true` |
+| `LARK_WRITE_ENABLED` | 是否允许写入飞书；本地 Next.js 和 Netlify 预览默认 `false`，Netlify Production 自动为 `true`；Cloudflare 运行时以 `wrangler.jsonc` 为准 |
 | `LARK_MAX_READ_RECORDS` | 单次接口最多读取的记录数，默认 `5000` |
 | `LARK_TABLE_STOCK_STRATEGY` | `18_SKU库存策略` 表 ID |
 | `LARK_TABLE_SKU_SUMMARY` | `19_SKU运营汇总` 表 ID，库存与补货看板读取该表 |
