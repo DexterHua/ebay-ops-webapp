@@ -7,6 +7,7 @@ import { MODULES } from "@/types";
 import { ModuleIcon } from "@/components/layout/module-icons";
 import { ArrowUpRight, Boxes, PackageCheck, TriangleAlert } from "lucide-react";
 import { getVisibleModulesForRole, isAccessRole, type AccessRole } from "@/lib/access-control";
+import { countSellableValidSkus } from "@/lib/inventory-flow";
 
 const EXTRA_DESC: Record<string, string> = {
   dashboard: "库存看板 · 销售趋势 · 售后分布 · 流程追踪 — 一张图看懂全局 →",
@@ -40,7 +41,7 @@ export default function Home() {
         const pipeline = snapshots.reduce((sum, s) =>
           sum + (Number(s["国内集货仓"]) || 0) + (Number(s["橙联在途"]) || 0), 0);
 
-        const sellableSku = snapshots.filter((s) => (Number(s["橙联可售"]) || 0) > 0).length;
+        const sellableSku = countSellableValidSkus(valid, snapshots);
         const warningCount = warningRows.filter((row) => {
           const recordType = String(row["记录类型"] || "").trim();
           const status = String(row["处理状态"] || "").trim();

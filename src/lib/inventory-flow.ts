@@ -144,6 +144,28 @@ export function normalizeInventoryDetailForSummary(row: {
   };
 }
 
+export function countSellableValidSkus(
+  skuRows: Array<{ SKU?: unknown; 中文品名?: unknown }>,
+  summaryRows: Array<{ SKU?: unknown; 橙联可售?: unknown }>,
+): number {
+  const normalizeSku = (value: unknown) => toInventoryText(value).trim().toUpperCase();
+  const validSkus = new Set(
+    skuRows
+      .filter((row) => normalizeSku(row.SKU) && toInventoryText(row.中文品名).trim())
+      .map((row) => normalizeSku(row.SKU)),
+  );
+  const sellableSkus = new Set<string>();
+
+  for (const row of summaryRows) {
+    const sku = normalizeSku(row.SKU);
+    if (validSkus.has(sku) && toInventoryNumber(row.橙联可售) > 0) {
+      sellableSkus.add(sku);
+    }
+  }
+
+  return sellableSkus.size;
+}
+
 export function countUniqueInventorySkusByState(
   details: Array<Pick<InventoryDetail, "SKU" | "当前数量" | "当前状态">>,
   state: InventoryState,
