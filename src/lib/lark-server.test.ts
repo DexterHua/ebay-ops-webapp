@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as larkServer from "@/lib/lark-server";
 import {
+  assertLarkWriteEnabled,
   calculateSalesSummaryPatch,
   calculateStockSummaryPatch,
   createLarkRecords,
@@ -54,6 +55,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllEnvs();
+  vi.unstubAllGlobals();
   vi.restoreAllMocks();
   execFileMock.mockReset();
   unlinkSyncMock.mockReset();
@@ -75,6 +77,15 @@ describe("飞书表格环境变量", () => {
 });
 
 describe("飞书写入开关", () => {
+  it("Netlify 运行时优先读取 Netlify.env 写入开关", () => {
+    vi.stubEnv("LARK_WRITE_ENABLED", "false");
+    const get = vi.fn((name: string) => (name === "LARK_WRITE_ENABLED" ? "true" : undefined));
+    vi.stubGlobal("Netlify", { env: { get } });
+
+    expect(() => assertLarkWriteEnabled()).not.toThrow();
+    expect(get).toHaveBeenCalledWith("LARK_WRITE_ENABLED");
+  });
+
   it("底层 CLI runner 不作为外部 API 导出，避免绕过写入开关和表映射", () => {
     expect("runLarkCli" in larkServer).toBe(false);
   });

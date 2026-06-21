@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { listLarkRecords } from "@/lib/lark-server";
+import { isLarkWriteEnabled, listLarkRecords } from "@/lib/lark-server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -12,7 +12,7 @@ export async function GET() {
   if (cachedStatus && Date.now() - cachedStatus.checkedAt < CACHE_MS) {
     return NextResponse.json({
       connected: cachedStatus.connected,
-      readOnly: process.env.LARK_WRITE_ENABLED !== "true",
+      readOnly: !isLarkWriteEnabled(),
     });
   }
 
@@ -25,6 +25,6 @@ export async function GET() {
 
   return NextResponse.json({
     connected: cachedStatus.connected,
-    readOnly: process.env.LARK_WRITE_ENABLED !== "true",
+    readOnly: !isLarkWriteEnabled(),
   });
 }

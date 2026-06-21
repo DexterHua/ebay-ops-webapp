@@ -41,15 +41,30 @@ export interface LarkRecord {
 
 let tenantTokenCache: { token: string; expiresAt: number } | null = null;
 
+type NetlifyRuntime = {
+  env?: {
+    get(name: string): string | undefined;
+  };
+};
+
+function getRuntimeEnv(name: string): string | undefined {
+  const runtime = globalThis as typeof globalThis & { Netlify?: NetlifyRuntime };
+  return runtime.Netlify?.env?.get(name) ?? process.env[name];
+}
+
 function getRequiredEnv(name: string): string {
   const value = process.env[name]?.trim();
   if (!value) throw new Error(`${name} 未配置`);
   return value;
 }
 
+export function isLarkWriteEnabled(): boolean {
+  return getRuntimeEnv("LARK_WRITE_ENABLED")?.trim() === "true";
+}
+
 /** 默认关闭所有飞书写入，避免开发和排查过程中误改业务数据。 */
 export function assertLarkWriteEnabled(): void {
-  if (process.env.LARK_WRITE_ENABLED !== "true") {
+  if (!isLarkWriteEnabled()) {
     throw new Error("飞书写入已关闭；确认允许写入后请设置 LARK_WRITE_ENABLED=true");
   }
 }
