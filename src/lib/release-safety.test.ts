@@ -4,6 +4,7 @@ import { analyzeReleaseSafety } from "./release-safety";
 const COMPLETE_ENV_EXAMPLE = [
   "JWT_SECRET=",
   "AUTH_USERS=",
+  "AUTH_USERS_JSON=",
   "DEEPSEEK_API_KEY=",
   "DEEPSEEK_MODEL=deepseek-v4-pro",
   "TAVILY_API_KEY=",
@@ -74,6 +75,17 @@ describe("analyzeReleaseSafety", () => {
 
     expect(result.ok).toBe(false);
     expect(result.errors).toContain(".env.example 中的 LARK_APP_SECRET 必须保留为空模板");
+  });
+
+  it("requires the hashed user seed template to stay empty", () => {
+    const result = analyzeReleaseSafety({
+      envExample: COMPLETE_ENV_EXAMPLE.replace("AUTH_USERS_JSON=", "AUTH_USERS_JSON=[real-users]"),
+      packageScripts: {},
+      trackedFiles: [],
+    });
+
+    expect(result.ok).toBe(false);
+    expect(result.errors).toContain(".env.example 中的 AUTH_USERS_JSON 必须保留为空模板");
   });
 
   it("warns instead of blocking when local Netlify link points to another site", () => {
