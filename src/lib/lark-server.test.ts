@@ -77,6 +77,20 @@ describe("飞书表格环境变量", () => {
 });
 
 describe("飞书写入开关", () => {
+  it("Netlify production 在显式开关缺失时允许写入", () => {
+    vi.stubEnv("LARK_WRITE_ENABLED", "");
+    vi.stubEnv("CONTEXT", "production");
+
+    expect(() => assertLarkWriteEnabled()).not.toThrow();
+  });
+
+  it("Netlify production 的显式 false 仍保持只读", () => {
+    vi.stubEnv("LARK_WRITE_ENABLED", "false");
+    vi.stubEnv("CONTEXT", "production");
+
+    expect(() => assertLarkWriteEnabled()).toThrow("飞书写入已关闭");
+  });
+
   it("Netlify 运行时优先读取 Netlify.env 写入开关", () => {
     vi.stubEnv("LARK_WRITE_ENABLED", "false");
     const get = vi.fn((name: string) => (name === "LARK_WRITE_ENABLED" ? "true" : undefined));

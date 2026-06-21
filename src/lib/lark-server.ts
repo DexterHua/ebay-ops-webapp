@@ -59,7 +59,9 @@ function getRequiredEnv(name: string): string {
 }
 
 export function isLarkWriteEnabled(): boolean {
-  return getRuntimeEnv("LARK_WRITE_ENABLED")?.trim() === "true";
+  const explicitValue = getRuntimeEnv("LARK_WRITE_ENABLED")?.trim();
+  if (explicitValue) return explicitValue === "true";
+  return getRuntimeEnv("CONTEXT")?.trim() === "production";
 }
 
 /** 默认关闭所有飞书写入，避免开发和排查过程中误改业务数据。 */
