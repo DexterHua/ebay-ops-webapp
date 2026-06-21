@@ -57,6 +57,7 @@ import {
   listUsers,
   removeUser,
   resetPassword,
+  seedUsers,
   verifyUser,
   type User,
 } from "./users";
@@ -76,6 +77,7 @@ beforeEach(() => {
   authToken.jwtVerify.mockReset();
   authToken.jwtVerify.mockImplementation(async () => ({ payload: authToken.payload }));
   delete process.env.AUTH_USERS;
+  delete process.env.AUTH_USERS_JSON;
   delete process.env.NETLIFY;
   delete process.env.NETLIFY_BLOBS_CONTEXT;
   process.env.JWT_SECRET = "test-secret-with-at-least-32-characters";
@@ -115,6 +117,59 @@ describe("用户角色 helper", () => {
 });
 
 describe("用户持久化", () => {
+  test("Netlify 空 Blobs 从 AUTH_USERS_JSON 原样迁移哈希用户", async () => {
+    process.env.NETLIFY = "true";
+    const seeded: User[] = [
+      {
+        name: "管理员",
+        password: "a".repeat(64),
+        createdAt: "2026-06-01",
+        role: "admin",
+        sessionVersion: 3,
+      },
+      {
+        name: "已删除账号",
+        password: "b".repeat(64),
+        createdAt: "2026-05-01",
+        role: "operator",
+        sessionVersion: 2,
+        deletedAt: "2026-06-20",
+      },
+    ];
+    process.env.AUTH_USERS_JSON = JSON.stringify(seeded);
+
+    await expect(seedUsers()).resolves.toEqual(seeded);
+    expect(netlifyUsersStore.setJSON).toHaveBeenCalledWith("users", seeded);
+  });
+
+  test("Netlify 已有用户时不读取或覆盖 AUTH_USERS_JSON", async () => {
+    process.env.NETLIFY = "true";
+    const existing: User[] = [
+      { name: "现有账号", password: "c".repeat(64), createdAt: "2026-06-01", role: "operator" },
+    ];
+    netlifyUsersStore.get.mockResolvedValue(existing);
+    process.env.AUTH_USERS_JSON = JSON.stringify([
+      { name: "迁移账号", password: "d".repeat(64), createdAt: "2026-06-02", role: "admin" },
+    ]);
+
+    await expect(seedUsers()).resolves.toEqual(existing);
+    expect(netlifyUsersStore.setJSON).not.toHaveBeenCalled();
+  });
+
+  test.each([
+    JSON.stringify([{ name: "账号", password: "not-a-hash", createdAt: "2026-06-01" }]),
+    JSON.stringify([
+      { name: "重复账号", password: "a".repeat(64), createdAt: "2026-06-01" },
+      { name: "重复账号", password: "b".repeat(64), createdAt: "2026-06-02" },
+    ]),
+  ])("Netlify 拒绝无效 AUTH_USERS_JSON 用户种子", async (rawSeed) => {
+    process.env.NETLIFY = "true";
+    process.env.AUTH_USERS_JSON = rawSeed;
+
+    await expect(seedUsers()).rejects.toThrow("AUTH_USERS_JSON 用户种子无效");
+    expect(netlifyUsersStore.setJSON).not.toHaveBeenCalled();
+  });
+
   test("列表返回规范化角色和会话版本，但不返回密码", async () => {
     setUsers([
       { name: "车泉", password: "secret", createdAt: "2026-06-03" },

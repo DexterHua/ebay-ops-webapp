@@ -54,6 +54,50 @@ function hashPassword(pw: string): string {
   return crypto.createHash("sha256").update(pw + "solid-salt").digest("hex");
 }
 
+const PASSWORD_HASH_PATTERN = /^[a-f0-9]{64}$/i;
+const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
+function parseHashedUserSeed(raw: string): User[] {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error("AUTH_USERS_JSON 用户种子无效");
+  }
+  if (!Array.isArray(parsed) || parsed.length === 0) {
+    throw new Error("AUTH_USERS_JSON 用户种子无效");
+  }
+
+  const names = new Set<string>();
+  return parsed.map((value) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      throw new Error("AUTH_USERS_JSON 用户种子无效");
+    }
+    const user = value as Partial<User>;
+    const normalizedName = typeof user.name === "string" ? user.name.trim() : "";
+    const validSessionVersion = user.sessionVersion === undefined || (
+      typeof user.sessionVersion === "number" &&
+      Number.isInteger(user.sessionVersion) &&
+      user.sessionVersion >= 0
+    );
+    if (
+      !normalizedName ||
+      names.has(normalizedName) ||
+      typeof user.password !== "string" ||
+      !PASSWORD_HASH_PATTERN.test(user.password) ||
+      typeof user.createdAt !== "string" ||
+      !DATE_PATTERN.test(user.createdAt) ||
+      (user.role !== undefined && !isUserRole(user.role)) ||
+      !validSessionVersion ||
+      (user.deletedAt !== undefined && typeof user.deletedAt !== "string")
+    ) {
+      throw new Error("AUTH_USERS_JSON 用户种子无效");
+    }
+    names.add(normalizedName);
+    return { ...user, name: normalizedName } as User;
+  });
+}
+
 /** Netlify 环境始终使用站点级 Blobs，避免用户数据随部署切换而丢失。 */
 async function getNetlifyUsersStore(): Promise<UsersBlobStore | null> {
   const netlifyBlobsContext = (globalThis as typeof globalThis & { netlifyBlobsContext?: string }).netlifyBlobsContext;
@@ -138,6 +182,13 @@ async function saveUsers(users: User[]): Promise<void> {
 export async function seedUsers(): Promise<User[]> {
   const existing = await getUsers();
   if (existing.length > 0) return existing;
+
+  const hashedSeed = process.env.AUTH_USERS_JSON?.trim();
+  if (hashedSeed) {
+    const seeded = parseHashedUserSeed(hashedSeed);
+    await saveUsers(seeded);
+    return seeded;
+  }
 
   const raw = process.env.AUTH_USERS || "";
   const seeded = raw.split(",").map(s => s.trim()).filter(Boolean).map(s => {
