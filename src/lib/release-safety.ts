@@ -18,6 +18,7 @@ const PROTECTED_TRACKED_FILES = new Set([
   ".env",
   ".env.local",
   "data/users.json",
+  "data/profit-settings.json",
   ".netlify/state.json",
 ]);
 

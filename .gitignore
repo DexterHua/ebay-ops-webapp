@@ -40,6 +40,7 @@ yarn-error.log*
 
 # local user data
 /data/users.json
+/data/profit-settings.json
 
 # vercel
 .vercel

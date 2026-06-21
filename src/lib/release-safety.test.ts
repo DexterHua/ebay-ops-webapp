@@ -42,12 +42,13 @@ describe("analyzeReleaseSafety", () => {
     const result = analyzeReleaseSafety({
       envExample: COMPLETE_ENV_EXAMPLE,
       packageScripts: {},
-      trackedFiles: [".env.local", "data/users.json", ".netlify/state.json"],
+      trackedFiles: [".env.local", "data/users.json", "data/profit-settings.json", ".netlify/state.json"],
     });
 
     expect(result.ok).toBe(false);
     expect(result.errors).toContain("敏感或本地运行态文件被 Git 跟踪：.env.local");
     expect(result.errors).toContain("敏感或本地运行态文件被 Git 跟踪：data/users.json");
+    expect(result.errors).toContain("敏感或本地运行态文件被 Git 跟踪：data/profit-settings.json");
     expect(result.errors).toContain("敏感或本地运行态文件被 Git 跟踪：.netlify/state.json");
   });
 

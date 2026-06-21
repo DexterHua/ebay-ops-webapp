@@ -6,6 +6,7 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ProfitCalculator } from "@/components/sku/profit-calculator";
 import { cn } from "@/lib/utils";
 import { buildSkuDetails, searchSkuDetails, type SkuDetailRecord, type SkuDetails } from "@/lib/sku-details";
 import {
@@ -299,6 +300,14 @@ export default function SkuDetailsPage() {
                     </div>
                   </CardContent>
                 </Card>
+
+                <ProfitCalculator
+                  key={selected.sku}
+                  sku={selected.sku}
+                  purchasePriceCny={selected.purchasePrice}
+                  grossWeightG={selected.grossWeightG}
+                  defaultSalePriceUsd={selected.lowestPrice}
+                />
 
                 <Card>
                   <CardHeader>

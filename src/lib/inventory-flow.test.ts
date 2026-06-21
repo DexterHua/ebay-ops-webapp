@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildLocationLedger,
   countInTransitInventorySkus,
+  countSellableValidSkus,
   countUniqueInventorySkusByState,
   createOpeningDetails,
   normalizeInventoryDetailForSummary,
@@ -50,6 +51,22 @@ describe("inventory flow", () => {
       { SKU: "SKU-2", 当前数量: 8, 当前状态: "待包装" },
       { SKU: "SKU-3", 当前数量: 0, 当前状态: "本地仓待清点" },
     ], "本地仓待清点")).toBe(1);
+  });
+
+  it("首页橙联可售 SKU 只统计有效主数据中的唯一 SKU", () => {
+    const validSkuRows = [
+      { SKU: "SKU-1", 中文品名: "商品一" },
+      { SKU: "SKU-2", 中文品名: "商品二" },
+      { SKU: "SKU-3", 中文品名: "" },
+    ];
+    const summaryRows = [
+      { SKU: "SKU-1", 橙联可售: 10 },
+      { SKU: "SKU-1", 橙联可售: 5 },
+      { SKU: "SKU-2", 橙联可售: 0 },
+      { SKU: "STALE-SKU", 橙联可售: 20 },
+    ];
+
+    expect(countSellableValidSkus(validSkuRows, summaryRows)).toBe(1);
   });
 
   it("在途 SKU 统计排除本地待清点、待包装和橙联可售并去重", () => {
