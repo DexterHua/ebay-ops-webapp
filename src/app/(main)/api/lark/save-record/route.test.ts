@@ -1,20 +1,26 @@
 import { NextRequest } from "next/server";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const lark = vi.hoisted(() => ({
   assertLarkWriteEnabled: vi.fn(),
   createLarkRecords: vi.fn(),
-  resolveLarkUserReference: vi.fn(),
   syncSalesSummary: vi.fn(),
   syncStockSummaryFromFlow: vi.fn(),
+}));
+
+const session = vi.hoisted(() => ({
+  requireSession: vi.fn(),
 }));
 
 vi.mock("@/lib/lark-server", () => ({
   assertLarkWriteEnabled: lark.assertLarkWriteEnabled,
   createLarkRecords: lark.createLarkRecords,
-  resolveLarkUserReference: lark.resolveLarkUserReference,
   syncSalesSummary: lark.syncSalesSummary,
   syncStockSummaryFromFlow: lark.syncStockSummaryFromFlow,
+}));
+
+vi.mock("@/lib/session-server", () => ({
+  requireSession: session.requireSession,
 }));
 
 import { POST } from "./route";
@@ -31,9 +37,78 @@ beforeEach(() => {
   lark.assertLarkWriteEnabled.mockReset();
   lark.createLarkRecords.mockReset();
   lark.createLarkRecords.mockResolvedValue(["rec-sourcing-1"]);
-  lark.resolveLarkUserReference.mockReset();
   lark.syncSalesSummary.mockReset();
   lark.syncStockSummaryFromFlow.mockReset();
+  session.requireSession.mockReset();
+  session.requireSession.mockResolvedValue({
+    name: "车泉",
+    isAdmin: true,
+    role: "admin",
+    sessionVersion: 0,
+  });
+});
+
+afterEach(() => vi.unstubAllEnvs());
+
+describe("save-record SKU ownership", () => {
+  it("ignores the client owner and writes the authenticated user's configured open_id", async () => {
+    vi.stubEnv("LARK_USER_OPEN_IDS", JSON.stringify({ 车泉: "ou_owner_123" }));
+
+    const response = await POST(request({
+      table: "skuMaster",
+      fields: {
+        SKU: "SKU-1",
+        中文品名: "方向游丝",
+        负责人: "客户端伪造",
+      },
+    }));
+    const json = await response.json() as { warning?: string };
+
+    expect(response.status).toBe(200);
+    expect(json.warning).toBeUndefined();
+    expect(lark.createLarkRecords).toHaveBeenCalledWith("sku", [{
+      SKU: "SKU-1",
+      中文品名: "方向游丝",
+      负责人: [{ id: "ou_owner_123" }],
+    }]);
+  });
+
+  it("saves without an owner and warns when the current user has no mapping", async () => {
+    vi.stubEnv("LARK_USER_OPEN_IDS", "");
+
+    const response = await POST(request({
+      table: "skuMaster",
+      fields: {
+        SKU: "SKU-1",
+        中文品名: "方向游丝",
+        负责人: "客户端伪造",
+      },
+    }));
+    const json = await response.json() as { warning?: string };
+
+    expect(response.status).toBe(200);
+    expect(json.warning).toContain("负责人未写入");
+    expect(lark.createLarkRecords).toHaveBeenCalledWith("sku", [{
+      SKU: "SKU-1",
+      中文品名: "方向游丝",
+    }]);
+  });
+
+  it("rejects the write when the authenticated session is invalid", async () => {
+    session.requireSession.mockRejectedValue(new Error("登录状态已失效"));
+
+    const response = await POST(request({
+      table: "skuMaster",
+      fields: {
+        SKU: "SKU-1",
+        中文品名: "方向游丝",
+        负责人: "客户端伪造",
+      },
+    }));
+
+    expect(response.status).toBe(500);
+    expect(lark.createLarkRecords).not.toHaveBeenCalled();
+  });
 });
 
 describe("save-record sourcing", () => {

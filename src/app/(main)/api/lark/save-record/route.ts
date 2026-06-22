@@ -7,10 +7,11 @@ import {
   assertLarkWriteEnabled,
   createLarkRecords,
   LarkTable,
-  resolveLarkUserReference,
   syncSalesSummary,
   syncStockSummaryFromFlow,
 } from "@/lib/lark-server";
+import { configuredLarkUserReference } from "@/lib/lark-user-map";
+import { requireSession } from "@/lib/session-server";
 
 const TABLE_MAP: Record<string, LarkTable> = {
   skuMaster: "sku",
@@ -80,8 +81,16 @@ export async function POST(request: NextRequest) {
     const normalizedFields = Object.fromEntries(
       Object.entries(fields).filter(([, value]) => value !== ""),
     );
-    if (table === "skuMaster" && typeof normalizedFields.负责人 === "string") {
-      normalizedFields.负责人 = await resolveLarkUserReference(normalizedFields.负责人);
+    let warning: string | undefined;
+    if (table === "skuMaster") {
+      delete normalizedFields.负责人;
+      const session = await requireSession();
+      const ownerReference = configuredLarkUserReference(session.name);
+      if (ownerReference) {
+        normalizedFields.负责人 = ownerReference;
+      } else {
+        warning = "SKU 已保存，但当前账号未配置飞书 open_id，负责人未写入";
+      }
     }
     for (const field of DATE_FIELDS[tableKey] || []) {
       if (field in normalizedFields) normalizedFields[field] = normalizeDateTime(normalizedFields[field]);
@@ -89,13 +98,13 @@ export async function POST(request: NextRequest) {
     const larkFields = tableKey === "sourcing" ? normalizeSourcingFields(normalizedFields) : normalizedFields;
 
     const recordIds = await createLarkRecords(tableKey, [larkFields]);
-    let warning: string | undefined;
     try {
       if (tableKey === "stockFlow") await syncStockSummaryFromFlow(normalizedFields);
       if (tableKey === "sales") await syncSalesSummary(String(normalizedFields.SKU || ""));
     } catch (error) {
-      warning = `业务记录已保存，但运营汇总同步失败：${(error as Error).message}`;
-      console.error("[lark] 汇总同步失败:", warning);
+      const summaryWarning = `业务记录已保存，但运营汇总同步失败：${(error as Error).message}`;
+      warning = warning ? `${warning}；${summaryWarning}` : summaryWarning;
+      console.error("[lark] 汇总同步失败:", summaryWarning);
     }
 
     return NextResponse.json({ success: true, table, recordIds, warning });
