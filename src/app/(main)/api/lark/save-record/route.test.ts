@@ -106,8 +106,39 @@ describe("save-record SKU ownership", () => {
       },
     }));
 
+    expect(response.status).toBe(401);
+    expect(lark.createLarkRecords).not.toHaveBeenCalled();
+  });
+
+  it("preserves status 500 for unexpected session failures", async () => {
+    session.requireSession.mockRejectedValue(new Error("用户存储不可用"));
+
+    const response = await POST(request({
+      table: "skuMaster",
+      fields: {
+        SKU: "SKU-1",
+        中文品名: "方向游丝",
+      },
+    }));
+
     expect(response.status).toBe(500);
     expect(lark.createLarkRecords).not.toHaveBeenCalled();
+  });
+
+  it("preserves status 500 for non-auth write failures", async () => {
+    lark.createLarkRecords.mockRejectedValue(new Error("飞书登录状态同步失败"));
+
+    const response = await POST(request({
+      table: "skuMaster",
+      fields: {
+        SKU: "SKU-1",
+        中文品名: "方向游丝",
+      },
+    }));
+    const json = await response.json() as { error?: string };
+
+    expect(response.status).toBe(500);
+    expect(json.error).toBe("飞书登录状态同步失败");
   });
 });
 

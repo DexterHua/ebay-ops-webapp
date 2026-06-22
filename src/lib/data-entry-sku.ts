@@ -33,8 +33,11 @@ export const defaultSkuMasterForm: SkuMasterForm = {
 };
 
 export function buildSkuMasterPayload(form: SkuMasterForm): Record<string, unknown> {
+  const businessFields: Record<string, unknown> = { ...form };
+  delete businessFields.负责人;
+
   return {
-    ...form,
+    ...businessFields,
     SKU状态: SKU_MASTER_DEFAULT_STATUS,
     "商品毛重（g）": parseFloat(form["商品毛重（g）"]) || 0,
   };

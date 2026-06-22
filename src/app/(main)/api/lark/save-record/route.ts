@@ -84,8 +84,20 @@ export async function POST(request: NextRequest) {
     let warning: string | undefined;
     if (table === "skuMaster") {
       delete normalizedFields.负责人;
-      const session = await requireSession();
-      const ownerReference = configuredLarkUserReference(session.name);
+      let sessionName: string;
+      try {
+        sessionName = (await requireSession()).name;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "未知错误";
+        const isSessionError = message === "未登录"
+          || message === "登录状态无效"
+          || message === "登录状态已失效";
+        if (isSessionError) {
+          return NextResponse.json({ success: false, error: message }, { status: 401 });
+        }
+        throw error;
+      }
+      const ownerReference = configuredLarkUserReference(sessionName);
       if (ownerReference) {
         normalizedFields.负责人 = ownerReference;
       } else {
@@ -109,6 +121,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ success: true, table, recordIds, warning });
   } catch (error) {
-    return NextResponse.json({ success: false, error: (error as Error).message }, { status: 500 });
+    const message = error instanceof Error ? error.message : "未知错误";
+    return NextResponse.json({ success: false, error: message }, { status: 500 });
   }
 }

@@ -77,7 +77,7 @@ function useSubmit() {
       });
       const json = await res.json();
       if (json.success) {
-        if (json.warning) toast.warning("记录已保存，但汇总需要检查", { description: json.warning });
+        if (json.warning) toast.warning("记录已保存，但需要检查", { description: json.warning });
         else toast.success("已保存到飞书");
         return true;
       }
@@ -99,8 +99,8 @@ function SkuForm() {
   const handleSubmit = async () => {
     if (!form.SKU || !form.中文品名) { toast.error("请至少填写 SKU 和 中文品名"); return; }
     const payload = buildSkuMasterPayload(form);
-    await submit("skuMaster", payload);
-    setForm({ ...defaultForm });
+    const saved = await submit("skuMaster", payload);
+    if (saved) setForm({ ...defaultForm });
   };
 
   const f = (key: string) => ({ value: form[key as keyof typeof form] as string, onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setForm({...form, [key]: e.target.value}) });

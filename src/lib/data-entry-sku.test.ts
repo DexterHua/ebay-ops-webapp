@@ -11,6 +11,7 @@ describe("data entry SKU master payload", () => {
       SKU状态: "停售",
       商品图片: "https://example.com/product.jpg",
       "商品毛重（g）": "320",
+      负责人: "客户端伪造",
     };
 
     const payload = buildSkuMasterPayload(form);

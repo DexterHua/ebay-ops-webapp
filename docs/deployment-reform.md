@@ -52,6 +52,7 @@
 - `LARK_APP_SECRET`
 - `LARK_BASE_TOKEN`
 - `LARK_BASE_FINANCE`
+- `LARK_USER_OPEN_IDS`：可选的登录姓名到飞书 `open_id` 的 JSON 映射；缺失或格式无效时，SKU 仍会保存，负责人保持空白，成功响应会返回 `warning`，页面会显示相应提示。仓库只保留空映射占位，生产实值仅配置在 Netlify 环境变量中
 - `LARK_TABLE_SKU`
 - `LARK_TABLE_SALES`
 - `LARK_TABLE_STOCK_FLOW`
