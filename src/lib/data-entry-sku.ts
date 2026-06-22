@@ -32,14 +32,10 @@ export const defaultSkuMasterForm: SkuMasterForm = {
   备注: "",
 };
 
-export function buildSkuMasterPayload(form: SkuMasterForm, ownerName: string): Record<string, unknown> {
-  const owner = ownerName.trim();
-  if (!owner) throw new Error("登录状态失效，请重新登录");
-
+export function buildSkuMasterPayload(form: SkuMasterForm): Record<string, unknown> {
   return {
     ...form,
     SKU状态: SKU_MASTER_DEFAULT_STATUS,
-    负责人: owner,
     "商品毛重（g）": parseFloat(form["商品毛重（g）"]) || 0,
   };
 }

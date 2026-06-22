@@ -88,14 +88,6 @@ function useSubmit() {
   return { submitting, submit };
 }
 
-async function currentUserName(): Promise<string> {
-  const me = await fetch("/api/auth/me")
-    .then((response) => response.json())
-    .catch(() => null) as { name?: string | null } | null;
-  if (!me?.name) throw new Error("登录状态失效，请重新登录");
-  return me.name;
-}
-
 // ==============================================================
 //  SKU 主数据录入
 // ==============================================================
@@ -106,12 +98,7 @@ function SkuForm() {
 
   const handleSubmit = async () => {
     if (!form.SKU || !form.中文品名) { toast.error("请至少填写 SKU 和 中文品名"); return; }
-    const ownerName = await currentUserName().catch((error: unknown) => {
-      toast.error(error instanceof Error ? error.message : "登录状态失效，请重新登录");
-      return "";
-    });
-    if (!ownerName) return;
-    const payload = buildSkuMasterPayload(form, ownerName);
+    const payload = buildSkuMasterPayload(form);
     await submit("skuMaster", payload);
     setForm({ ...defaultForm });
   };
