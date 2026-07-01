@@ -116,9 +116,21 @@ export async function callAIStructured<T>(params: {
   try {
     let cleaned = result.data.trim();
     cleaned = cleaned.replace(/^```json\s*/i, "").replace(/\s*```$/i, "");
+    if (!cleaned) {
+      return { success: false, error: "AI 未返回可解析内容，请重试。", tokensUsed: result.tokensUsed };
+    }
+    if (
+      (cleaned.startsWith("{") && !cleaned.endsWith("}")) ||
+      (cleaned.startsWith("[") && !cleaned.endsWith("]"))
+    ) {
+      return { success: false, error: "AI 返回的 JSON 不完整，请重试。", tokensUsed: result.tokensUsed };
+    }
     const parsed = JSON.parse(escapeJsonStringControlCharacters(cleaned)) as T;
     return { success: true, data: parsed, tokensUsed: result.tokensUsed };
   } catch (error) {
+    if ((error as Error).message.includes("Unexpected end of JSON input")) {
+      return { success: false, error: "AI 返回的 JSON 不完整，请重试。", tokensUsed: result.tokensUsed };
+    }
     return { success: false, error: `JSON 解析失败: ${(error as Error).message}`, tokensUsed: result.tokensUsed };
   }
 }

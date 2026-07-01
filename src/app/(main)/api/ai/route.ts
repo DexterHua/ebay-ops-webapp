@@ -39,6 +39,8 @@ export async function POST(request: NextRequest) {
           { role: "system", content: systemPrompt },
           { role: "user", content: userMessage },
         ],
+        response_format: { type: "json_object" },
+        thinking: { type: "disabled" },
         max_tokens: maxTokens,
         temperature,
       }),
@@ -53,12 +55,31 @@ export async function POST(request: NextRequest) {
     }
 
     const data = await response.json();
-    const textContent = data.choices?.[0]?.message?.content || "";
+    const choice = data.choices?.[0];
+    const textContent = typeof choice?.message?.content === "string"
+      ? choice.message.content.trim()
+      : "";
+    const tokensUsed = data.usage?.total_tokens || 0;
+
+    if (!textContent) {
+      const finishReason = typeof choice?.finish_reason === "string" ? choice.finish_reason : "unknown";
+      const detail = finishReason === "length"
+        ? "响应可能被截断，请减少分析数据量或稍后重试。"
+        : "服务商返回了空内容，请稍后重试。";
+      return NextResponse.json(
+        {
+          success: false,
+          error: `AI 未返回有效内容（finish_reason: ${finishReason}）。${detail}`,
+          tokensUsed,
+        },
+        { status: 502 }
+      );
+    }
 
     return NextResponse.json({
       success: true,
       data: textContent,
-      tokensUsed: data.usage?.total_tokens || 0,
+      tokensUsed,
     });
   } catch (error) {
     return NextResponse.json(

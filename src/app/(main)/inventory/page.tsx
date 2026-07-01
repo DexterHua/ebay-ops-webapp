@@ -9,6 +9,15 @@ import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { callAIStructured } from "@/lib/ai";
 import {
+  buildReplenishmentExcelHtml,
+  buildReplenishmentExportRows,
+  buildRuleBasedInventoryAnalysis,
+  hydrateInventoryAnalysisFromSource,
+  isRecoverableInventoryAiError,
+  type InventoryAnalysisInput,
+  type InventoryAnalysisResult,
+} from "@/lib/inventory-analysis";
+import {
   countInTransitInventorySkus,
   countUniqueInventorySkusByState,
   normalizeInventoryDetailForSummary,
@@ -19,7 +28,7 @@ import {
 } from "@/lib/inventory-flow";
 import { INVENTORY_SYSTEM_PROMPT, buildInventoryUserMessage } from "@/lib/prompts";
 import { toast } from "sonner";
-import { PackageSearch, Sparkles } from "lucide-react";
+import { Download, PackageSearch, Sparkles } from "lucide-react";
 
 // ============================================================
 // 库存监控与智能补货 — 飞书真实数据版
@@ -96,47 +105,7 @@ const inventoryCountFormatter = new Intl.NumberFormat("zh-CN", {
 });
 
 // AI 分析用的精简结构
-interface SkuForAI {
-  sku: string;
-  productName: string;
-  available: number;
-  inTransit: number;
-  local: number;
-  dailySales: number;
-  salesTrend: string;
-  replenishCycle: number;
-  profitMargin: number;
-  safetyStock: number;
-  cost: number;
-  category: string;
-  status: string;
-  totalSales: number;
-  autoDailySales: number;
-}
-
-interface AIAnalysisResult {
-  analysis: Array<{
-    sku: string;
-    productName: string;
-    currentStock: { available: number; inTransit: number; local: number };
-    dailySales: number;
-    salesTrend: string;
-    trendExplanation: string;
-    daysUntilStockout: number;
-    suggestedOrderQty: number;
-    suggestedOrderDate: string;
-    priority: string;
-    priorityReason: string;
-    riskNote: string;
-    aiSummary: string;
-  }>;
-  summary: {
-    urgentCount: number;
-    warningCount: number;
-    normalCount: number;
-    overallAdvice: string;
-  };
-}
+type SkuForAI = InventoryAnalysisInput;
 
 export default function InventoryPage() {
   const [skus, setSkus] = useState<SkuForAI[]>([]);
@@ -147,7 +116,7 @@ export default function InventoryPage() {
   const [skusLoading, setSkusLoading] = useState(true);
   const [skusError, setSkusError] = useState("");
   const [analyzing, setAnalyzing] = useState(false);
-  const [analysis, setAnalysis] = useState<AIAnalysisResult | null>(null);
+  const [analysis, setAnalysis] = useState<InventoryAnalysisResult | null>(null);
   const [savingReplenish, setSavingReplenish] = useState(false);
 
   // 页面加载时组合读取 SKU 静态资料、库存策略与运营汇总。
@@ -247,21 +216,54 @@ export default function InventoryPage() {
 
     setAnalyzing(true);
     const userMessage = buildInventoryUserMessage(skus);
-    const result = await callAIStructured<AIAnalysisResult>({
+    const result = await callAIStructured<InventoryAnalysisResult>({
       systemPrompt: INVENTORY_SYSTEM_PROMPT,
       userMessage,
-      maxTokens: 8192,
+      maxTokens: 16384,
     });
 
     if (result.success && result.data) {
-      setAnalysis(result.data);
-      toast.success(`分析完成，${result.data.summary.urgentCount}个紧急补货`, {
+      const hydrated = hydrateInventoryAnalysisFromSource(result.data, skus);
+      setAnalysis(hydrated);
+      toast.success(`分析完成，${hydrated.summary.urgentCount}个紧急补货`, {
         description: `Token 用量: ${result.tokensUsed}，分析了 ${skus.length} 个 SKU`,
+      });
+    } else if (isRecoverableInventoryAiError(result.error)) {
+      const fallback = buildRuleBasedInventoryAnalysis(skus);
+      setAnalysis(fallback);
+      toast.warning("AI 输出不完整，已使用智能规则完成分析", {
+        description: `已分析 ${skus.length} 个 SKU，可先按结果执行补货判断`,
       });
     } else {
       toast.error("AI分析失败", { description: result.error });
     }
     setAnalyzing(false);
+  };
+
+  const exportReplenishmentExcel = () => {
+    if (!analysis) {
+      toast.error("请先运行 AI 补货分析");
+      return;
+    }
+
+    const rows = buildReplenishmentExportRows(analysis);
+    if (rows.length === 0) {
+      toast.info("当前没有需要补货的商品");
+      return;
+    }
+
+    const html = buildReplenishmentExcelHtml(rows);
+    const blob = new Blob(["\ufeff", html], { type: "application/vnd.ms-excel;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    const date = new Date().toISOString().slice(0, 10);
+    anchor.href = url;
+    anchor.download = `需补货商品清单-${date}.xls`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+    toast.success("Excel 已生成", { description: `已导出 ${rows.length} 条需补货商品` });
   };
 
   // 保存补货建议到飞书 10_补货采购建议
@@ -353,13 +355,22 @@ export default function InventoryPage() {
             {analyzing ? "AI 分析中..." : "运行 AI 补货分析"}
           </Button>
           {analysis && analysis.analysis.length > 0 && (
-            <Button
-              variant="outline"
-              onClick={saveReplenishToFeishu}
-              disabled={savingReplenish}
-            >
-              {savingReplenish ? "保存中..." : "保存补货建议到飞书"}
-            </Button>
+            <>
+              <Button
+                variant="outline"
+                onClick={exportReplenishmentExcel}
+              >
+                <Download className="h-4 w-4" />
+                导出需补货清单
+              </Button>
+              <Button
+                variant="outline"
+                onClick={saveReplenishToFeishu}
+                disabled={savingReplenish}
+              >
+                {savingReplenish ? "保存中..." : "保存补货建议到飞书"}
+              </Button>
+            </>
           )}
         </div>
       </div>

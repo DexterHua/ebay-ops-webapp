@@ -8,11 +8,13 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
+import { STORES, type StoreId } from "@/types";
 import { toast } from "sonner";
 
 type UserRole = "admin" | "purchaser" | "operator";
 
-interface UserInfo { name: string; createdAt: string; role: UserRole; }
+interface UserInfo { name: string; createdAt: string; role: UserRole; storeIds: StoreId[]; }
 
 interface UsersMutationResponse {
   ok: boolean;
@@ -20,6 +22,7 @@ interface UsersMutationResponse {
 }
 
 const USERS_REQUEST_TIMEOUT_MS = 15_000;
+const ACTIVE_STORES = STORES.filter((store) => store.active);
 const ROLE_LABELS: Record<UserRole, string> = {
   admin: "管理员",
   purchaser: "采购员",
@@ -32,7 +35,7 @@ const ROLE_BADGE_CLASS_NAMES: Record<UserRole, string> = {
   operator: "bg-blue-100 text-blue-700",
 };
 
-async function mutateUsers(body: Record<string, string>): Promise<UsersMutationResponse> {
+async function mutateUsers(body: Record<string, string | string[]>): Promise<UsersMutationResponse> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), USERS_REQUEST_TIMEOUT_MS);
 
@@ -72,12 +75,19 @@ export default function AccountsPage() {
   const [newName, setNewName] = useState("");
   const [newPass, setNewPass] = useState("");
   const [newRole, setNewRole] = useState<UserRole>("operator");
+  const [newStoreIds, setNewStoreIds] = useState<StoreId[]>([]);
   const [saving, setSaving] = useState(false);
 
   // 重置密码表单
   const [resetTarget, setResetTarget] = useState("");
   const [showReset, setShowReset] = useState(false);
   const [newPassword, setNewPassword] = useState("");
+
+  // 编辑权限表单
+  const [editTarget, setEditTarget] = useState("");
+  const [showEdit, setShowEdit] = useState(false);
+  const [editRole, setEditRole] = useState<UserRole>("operator");
+  const [editStoreIds, setEditStoreIds] = useState<StoreId[]>([]);
 
   // 删除确认
   const [deleteTarget, setDeleteTarget] = useState("");
@@ -114,15 +124,56 @@ export default function AccountsPage() {
     if (!newName.trim() || !newPass.trim()) { toast.error("请填写姓名和密码"); return; }
     setSaving(true);
     try {
-      await mutateUsers({ action: "add", name: newName.trim(), password: newPass, role: newRole });
+      await mutateUsers({ action: "add", name: newName.trim(), password: newPass, role: newRole, storeIds: newStoreIds });
       toast.success("用户已创建");
       setShowAdd(false);
       setNewName("");
       setNewPass("");
       setNewRole("operator");
+      setNewStoreIds([]);
       refreshUsers();
     } catch (error) {
       toast.error("创建失败", { description: getErrorMessage(error) });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const toggleNewStore = (storeId: StoreId, checked: boolean) => {
+    setNewStoreIds((current) => (
+      checked ? [...current, storeId] : current.filter((id) => id !== storeId)
+    ));
+  };
+
+  const toggleEditStore = (storeId: StoreId, checked: boolean) => {
+    setEditStoreIds((current) => (
+      checked ? [...current, storeId] : current.filter((id) => id !== storeId)
+    ));
+  };
+
+  const openEdit = (user: UserInfo) => {
+    setEditTarget(user.name);
+    setEditRole(user.role);
+    setEditStoreIds(user.storeIds);
+    setShowEdit(true);
+  };
+
+  const closeEdit = () => {
+    setShowEdit(false);
+    setEditTarget("");
+    setEditRole("operator");
+    setEditStoreIds([]);
+  };
+
+  const handleUpdatePermissions = async () => {
+    setSaving(true);
+    try {
+      await mutateUsers({ action: "updatePermissions", name: editTarget, role: editRole, storeIds: editStoreIds });
+      toast.success("权限已更新", { description: "该账号需重新登录后生效。" });
+      closeEdit();
+      refreshUsers();
+    } catch (error) {
+      toast.error("保存失败", { description: getErrorMessage(error) });
     } finally {
       setSaving(false);
     }
@@ -197,10 +248,25 @@ export default function AccountsPage() {
                         <Badge className={`border-0 text-[10px] ${ROLE_BADGE_CLASS_NAMES[u.role]}`}>{ROLE_LABELS[u.role]}</Badge>
                       </div>
                       <p className="text-[11px] text-gray-400">创建于 {u.createdAt}</p>
+                      <div className="mt-1 flex flex-wrap gap-1">
+                        {u.storeIds.length > 0 ? u.storeIds.map((storeId) => {
+                          const store = ACTIVE_STORES.find((item) => item.id === storeId);
+                          return (
+                            <Badge key={storeId} variant="outline" className="h-5 rounded-md border-slate-200 bg-white px-1.5 text-[10px] text-slate-500">
+                              {store?.name || storeId}
+                            </Badge>
+                          );
+                        }) : (
+                          <span className="text-[11px] text-gray-400">未分配店铺</span>
+                        )}
+                      </div>
                     </div>
                   </div>
                   {u.name !== "车泉" && (
                     <div className="flex items-center gap-2">
+                      <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => openEdit(u)}>
+                        编辑
+                      </Button>
                       <Button variant="outline" size="sm" className="h-7 text-xs" onClick={() => { setResetTarget(u.name); setNewPassword(""); setShowReset(true); }}>
                         重置密码
                       </Button>
@@ -235,10 +301,72 @@ export default function AccountsPage() {
                 <SelectItem value="operator">运营</SelectItem>
               </SelectContent>
             </Select>
+            <div className="space-y-2 rounded-md border border-slate-200 p-3">
+              <div>
+                <p className="text-xs font-medium text-slate-700">店铺分配</p>
+                <p className="text-[11px] text-slate-400">未勾选时，该账号不会显示或访问单店经营看板。</p>
+              </div>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                {ACTIVE_STORES.map((store) => (
+                  <label key={store.id} className="flex min-h-8 items-center gap-2 rounded-md border border-slate-100 px-2 text-xs text-slate-600">
+                    <Checkbox
+                      checked={newStoreIds.includes(store.id)}
+                      onChange={(event) => toggleNewStore(store.id, event.currentTarget.checked)}
+                    />
+                    <span>{store.name}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowAdd(false)}>取消</Button>
             <Button onClick={handleAdd} disabled={saving}>{saving ? "创建中…" : "创建"}</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* 编辑权限弹窗 */}
+      <Dialog open={showEdit} onOpenChange={(open) => open ? setShowEdit(true) : closeEdit()}>
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>编辑权限</DialogTitle>
+            <DialogDescription>调整 {editTarget} 的角色和店铺分配</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-3">
+            <Select value={editRole} onValueChange={(role) => {
+              if (role === "admin" || role === "purchaser" || role === "operator") setEditRole(role);
+            }}>
+              <SelectTrigger className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="admin">管理员</SelectItem>
+                <SelectItem value="purchaser">采购员</SelectItem>
+                <SelectItem value="operator">运营</SelectItem>
+              </SelectContent>
+            </Select>
+            <div className="space-y-2 rounded-md border border-slate-200 p-3">
+              <div>
+                <p className="text-xs font-medium text-slate-700">店铺分配</p>
+                <p className="text-[11px] text-slate-400">保存后，该账号需重新登录后生效。</p>
+              </div>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                {ACTIVE_STORES.map((store) => (
+                  <label key={store.id} className="flex min-h-8 items-center gap-2 rounded-md border border-slate-100 px-2 text-xs text-slate-600">
+                    <Checkbox
+                      checked={editStoreIds.includes(store.id)}
+                      onChange={(event) => toggleEditStore(store.id, event.currentTarget.checked)}
+                    />
+                    <span>{store.name}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={closeEdit} disabled={saving}>取消</Button>
+            <Button onClick={handleUpdatePermissions} disabled={saving}>{saving ? "保存中…" : "保存"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

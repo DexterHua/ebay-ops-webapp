@@ -1,4 +1,4 @@
-export type DetailStoreId = "SP" | "NP" | "VG" | "TR";
+export type DetailStoreId = "SP" | "NP" | "VG" | "TR" | "NX";
 export type DetailTemplateVariant = "withBanner" | "noBanner";
 
 export interface DetailTemplateVariantOption {
@@ -110,6 +110,26 @@ export const DETAIL_TEMPLATE_STORES: DetailTemplateStore[] = [
         name: "不带 banner 图",
         description: "精简版",
         templatePath: "/detail-templates/TitanRig_no_banner.html",
+      },
+    },
+  },
+  {
+    id: "NX",
+    name: "Nexusmoto",
+    label: "Nexusmoto Auto & Moto Parts",
+    tableClass: "nx-table",
+    templates: {
+      withBanner: {
+        id: "withBanner",
+        name: "带 banner 图",
+        description: "大文件 · 内嵌 banner",
+        templatePath: "/detail-templates/Nexusmoto_with_banner.html",
+      },
+      noBanner: {
+        id: "noBanner",
+        name: "不带 banner 图",
+        description: "小文件 · CSS 氛围",
+        templatePath: "/detail-templates/Nexusmoto_no_banner.html",
       },
     },
   },

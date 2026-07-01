@@ -1,12 +1,14 @@
 import { cookies } from "next/headers";
 import { jwtVerify } from "jose";
 import { getJwtSecret } from "@/lib/auth-config";
-import { getUserRole, getUsers, getUserSessionVersion, type UserRole } from "@/lib/users";
+import { getUserRole, getUserStoreIds, getUsers, getUserSessionVersion, type UserRole } from "@/lib/users";
+import type { StoreId } from "@/types";
 
 export interface SessionUser {
   name: string;
   isAdmin: boolean;
   role: UserRole;
+  storeIds: StoreId[];
   sessionVersion: number;
 }
 
@@ -30,7 +32,7 @@ export async function requireSession(): Promise<SessionUser> {
   if (tokenSessionVersion !== sessionVersion) throw new Error("登录状态已失效");
 
   const role = getUserRole(user);
-  return { name: user.name, role, isAdmin: role === "admin", sessionVersion };
+  return { name: user.name, role, isAdmin: role === "admin", storeIds: getUserStoreIds(user), sessionVersion };
 }
 
 /** 要求当前账号具备指定角色。 */

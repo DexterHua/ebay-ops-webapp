@@ -8,16 +8,19 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
+import { Badge } from "@/components/ui/badge";
+import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
-import { buildSkuMasterPayload, defaultSkuMasterForm } from "@/lib/data-entry-sku";
+import { SKU_CHANGE_EDITABLE_FIELDS, buildSkuChangePatch, type SkuChangeRequest } from "@/lib/sku-change-request";
+import { AlertTriangle, BadgeCheck, BadgeX, CheckCircle2, Download, FileSpreadsheet, RefreshCw, Search, Send, Upload } from "lucide-react";
 
 // ============================================================
 // 数据录入 — 高频表单
 // ============================================================
 
-const STORES = ["NewPower", "VelocityGear", "TitanRig", "Nexusmoto"];
+const STORES = ["NewPower", "VelocityGear", "TitanRig", "Solidparts", "Nexusmoto"];
 
-interface SkuOption { SKU?: string; 中文品名?: string; [key: string]: unknown }
+interface SkuOption { recordId?: string; SKU?: string; 中文品名?: string; [key: string]: unknown }
 
 export default function DataEntryPage() {
   const [skuList, setSkuList] = useState<SkuOption[]>([]);
@@ -47,10 +50,10 @@ export default function DataEntryPage() {
         </TabsList>
 
         <TabsContent value="sku">
-          <SkuForm />
+          <SkuForm skuList={skuList} />
         </TabsContent>
         <TabsContent value="sales">
-          <SalesForm skuList={skuList} today={today} />
+          <SalesImportPanel />
         </TabsContent>
         <TabsContent value="issues">
           <IssuesForm skuList={skuList} today={today} />
@@ -91,134 +94,621 @@ function useSubmit() {
 // ==============================================================
 //  SKU 主数据录入
 // ==============================================================
-function SkuForm() {
-  const { submitting, submit } = useSubmit();
-  const defaultForm = defaultSkuMasterForm;
-  const [form, setForm] = useState(defaultForm);
+type SkuImportResult = {
+  success?: boolean;
+  commit?: boolean;
+  ready?: number;
+  created?: number;
+  duplicates?: Array<{ sourceRow: number; SKU?: unknown; 中文品名?: unknown; reason?: string }>;
+  errors?: Array<{ row: number; message: string }>;
+  summary?: {
+    totalRows: number;
+    validRows: number;
+    duplicateRows: number;
+    errorRows: number;
+  };
+  rows?: Array<{ sourceRow: number; SKU?: unknown; 中文品名?: unknown }>;
+  recordIds?: string[];
+  warning?: string;
+  error?: string;
+};
 
-  const handleSubmit = async () => {
-    if (!form.SKU || !form.中文品名) { toast.error("请至少填写 SKU 和 中文品名"); return; }
-    const payload = buildSkuMasterPayload(form);
-    const saved = await submit("skuMaster", payload);
-    if (saved) setForm({ ...defaultForm });
+function SkuForm({ skuList }: { skuList: SkuOption[] }) {
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [preview, setPreview] = useState<SkuImportResult | null>(null);
+  const [result, setResult] = useState<SkuImportResult | null>(null);
+  const [loading, setLoading] = useState<"preview" | "commit" | null>(null);
+
+  const submitImport = async (commit: boolean) => {
+    if (!importFile) { toast.error("请选择商品录入模板 XLSX 文件"); return; }
+    setLoading(commit ? "commit" : "preview");
+    if (!commit) setResult(null);
+    try {
+      const formData = new FormData();
+      formData.append("file", importFile, importFile.name);
+      formData.append("commit", commit ? "true" : "false");
+      const response = await fetch("/api/sku/import", { method: "POST", body: formData });
+      const json = await response.json() as SkuImportResult;
+      if (!response.ok || !json.success) {
+        toast.error(commit ? "导入失败" : "解析失败", { description: json.error });
+        return;
+      }
+      if (commit) {
+        setResult(json);
+        if (json.warning) toast.warning("SKU 已导入，但需要检查", { description: json.warning });
+        else toast.success("SKU 主数据已导入", { description: `新增 ${json.created || 0} 条，跳过重复 ${json.duplicates?.length || 0} 条` });
+      } else {
+        setPreview(json);
+        toast.success("解析完成", { description: `可导入 ${json.ready || 0} 条，重复 ${json.duplicates?.length || 0} 条，异常 ${json.errors?.length || 0} 条` });
+      }
+    } catch (error) {
+      toast.error("请求失败", { description: error instanceof Error ? error.message : "网络错误" });
+    } finally {
+      setLoading(null);
+    }
   };
 
-  const f = (key: string) => ({ value: form[key as keyof typeof form] as string, onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => setForm({...form, [key]: e.target.value}) });
+  const canImport = Boolean(importFile && preview && (preview.ready || 0) > 0 && loading !== "commit");
+  const summary = result?.summary || preview?.summary;
 
   return <Card>
-    <CardHeader><CardTitle className="text-base">SKU 主数据录入</CardTitle><CardDescription>新增商品基础档案，写入 01_SKU主数据。公式字段自动计算无需填写。</CardDescription></CardHeader>
+    <CardHeader><CardTitle className="text-base">SKU 主数据导入</CardTitle><CardDescription>通过模板批量导入新品，重复 SKU 会自动跳过；存量 SKU 走补录审核。</CardDescription></CardHeader>
     <CardContent className="space-y-4">
-      {/* 基本信息 */}
-      <div>
-        <p className="text-xs font-medium text-gray-500 mb-2">基本信息</p>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <div><label className="text-[10px] text-gray-400">SKU *</label><Input {...f("SKU")} placeholder="如 SP843060E010A001" /></div>
-          <div className="sm:col-span-2"><label className="text-[10px] text-gray-400">中文品名 *</label><Input {...f("中文品名")} placeholder="方向游丝" /></div>
-          <div className="sm:col-span-2"><label className="text-[10px] text-gray-400">英文标题关键词</label><Input {...f("英文标题关键词")} placeholder="Steering Wheel Clock Spring" /></div>
-          <div><label className="text-[10px] text-gray-400">类目</label><Select value={form.类目} onValueChange={(v) => setForm({...form, 类目: v || "Others"})}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{["Clock Spring","Carburetor","Others"].map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent></Select></div>
-          <div><label className="text-[10px] text-gray-400">OEM</label><Input {...f("OEM")} placeholder="84306-0E010*1" /></div>
-          <div><label className="text-[10px] text-gray-400">商品毛重(g)</label><Input {...f("商品毛重（g）")} type="number" /></div>
-          <div><label className="text-[10px] text-gray-400">尺寸(cm)</label><Input {...f("商品尺寸（含包装）（cm）")} placeholder="13.2*13.2*9.4" /></div>
+      <div className="space-y-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <p className="text-xs font-medium text-gray-500">批量导入新品</p>
+            <p className="mt-1 text-xs text-gray-400">下载模板后填写新品，重量列按 kg 填写，系统导入前会转换为 g。</p>
+          </div>
+          <Button type="button" variant="outline" onClick={() => { window.location.href = "/api/sku/import/template"; }}>
+            <Download />
+            下载导入模板
+          </Button>
         </div>
+        <div className="grid gap-3 sm:grid-cols-[1fr_auto_auto] sm:items-end">
+          <div>
+            <label className="mb-1 block text-xs text-gray-400">商品录入模板 XLSX 文件</label>
+            <Input
+              type="file"
+              accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+              onChange={(event) => {
+                setImportFile(event.target.files?.[0] || null);
+                setPreview(null);
+                setResult(null);
+              }}
+            />
+          </div>
+          <Button type="button" variant="outline" onClick={() => submitImport(false)} disabled={!importFile || loading !== null}>
+            {loading === "preview" ? <RefreshCw className="animate-spin" /> : <Upload />}
+            解析预览
+          </Button>
+          <Button type="button" onClick={() => submitImport(true)} disabled={!canImport}>
+            {loading === "commit" ? <RefreshCw className="animate-spin" /> : <CheckCircle2 />}
+            导入新品
+          </Button>
+        </div>
+
+        {summary && (
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <ImportMetric label="总行数" value={summary.totalRows} />
+            <ImportMetric label="可导入" value={preview?.ready ?? result?.created ?? 0} />
+            <ImportMetric label="重复" value={summary.duplicateRows} />
+            <ImportMetric label="异常" value={summary.errorRows} tone={summary.errorRows > 0 ? "warn" : "default"} />
+          </div>
+        )}
+
+        {result?.warning && (
+          <div className="rounded-md border border-amber-100 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+            {result.warning}
+          </div>
+        )}
+
+        {(preview?.errors?.length || result?.errors?.length) ? (
+          <ImportList
+            icon={<AlertTriangle className="size-4 text-amber-600" />}
+            title="异常行"
+            items={(result?.errors || preview?.errors || []).slice(0, 8).map((item) => `第 ${item.row} 行：${item.message}`)}
+          />
+        ) : null}
+
+        {(preview?.duplicates?.length || result?.duplicates?.length) ? (
+          <ImportList
+            title="重复 SKU"
+            items={(result?.duplicates || preview?.duplicates || []).slice(0, 8).map((item) => `第 ${item.sourceRow} 行：${String(item.SKU || "")} ${item.reason || ""}`)}
+          />
+        ) : null}
+
+        {(preview?.rows?.length || 0) > 0 && (
+          <ImportList
+            title="预览明细"
+            items={(preview?.rows || []).slice(0, 8).map((item) => `第 ${item.sourceRow} 行：${String(item.SKU || "")} / ${String(item.中文品名 || "")}`)}
+          />
+        )}
       </div>
 
       <Separator />
 
-      {/* 状态与分类 */}
-      <div>
-        <p className="text-xs font-medium text-gray-500 mb-2">状态与分类</p>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <div><label className="text-[10px] text-gray-400">供应商</label><Input {...f("供应商")} placeholder="如 KY / 供应商名称" /></div>
-          <div><label className="text-[10px] text-gray-400">风险标签</label><Select value={form.风险标签} onValueChange={(v) => setForm({...form, 风险标签: v || "低风险"})}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{["低风险","带电/认证需复核"].map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent></Select></div>
-          <div><label className="text-[10px] text-gray-400">商品图片</label><Input {...f("商品图片")} placeholder="https://..." /></div>
-          <div><label className="text-[10px] text-gray-400">描述</label><Input {...f("描述")} placeholder="产品用途/卖点摘要" /></div>
-          <div><label className="text-[10px] text-gray-400">备注</label><Input {...f("备注")} /></div>
-        </div>
-      </div>
-
-      <Button onClick={handleSubmit} disabled={submitting} className="w-full">
-        {submitting ? "保存中..." : "保存到飞书 01_SKU主数据"}
-      </Button>
+      <SkuChangeRequestPanel skuList={skuList} />
     </CardContent>
   </Card>;
 }
 
-// ==============================================================
-//  销售日报
-// ==============================================================
-function SalesForm({ skuList, today }: { skuList: SkuOption[]; today: string }) {
-  const { submitting, submit } = useSubmit();
-  const [form, setForm] = useState({ SKU: "", 商品名称: "", 店铺: "NewPower", 日期: today, 售出数量: "1", 销售额: "", 商品成本: "", eBay费用: "", 广告费: "", 橙联履约费: "", 退款金额: "0", 备注: "" });
-  const [skuQuery, setSkuQuery] = useState("");
-  const [showSku, setShowSku] = useState(false);
+function displayText(value: unknown): string {
+  if (typeof value === "string") return value.trim();
+  if (typeof value === "number") return String(value);
+  if (Array.isArray(value)) return value.map(displayText).filter(Boolean).join("、");
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    return displayText(record.text ?? record.value ?? record.name ?? record.id ?? "");
+  }
+  return "";
+}
 
-  const matched = skuQuery.trim()
-    ? skuList.filter(s => s.SKU?.toLowerCase().includes(skuQuery.toLowerCase()) || s.中文品名?.toLowerCase().includes(skuQuery.toLowerCase()))
+function pickSkuChangeFields(sku: SkuOption): Record<string, unknown> {
+  const fields: Record<string, unknown> = { SKU: sku.SKU || "" };
+  for (const field of SKU_CHANGE_EDITABLE_FIELDS) {
+    fields[field] = sku[field] ?? "";
+  }
+  return fields;
+}
+
+function SkuChangeRequestPanel({ skuList }: { skuList: SkuOption[] }) {
+  const [user, setUser] = useState<{ name?: string | null; isAdmin?: boolean; role?: string | null }>({});
+  const [query, setQuery] = useState("");
+  const [showMatches, setShowMatches] = useState(false);
+  const [selectedSku, setSelectedSku] = useState<SkuOption | null>(null);
+  const [edits, setEdits] = useState<Record<string, string>>({});
+  const [requests, setRequests] = useState<SkuChangeRequest[]>([]);
+  const [requestsLoading, setRequestsLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [reviewing, setReviewing] = useState<string | null>(null);
+
+  const loadRequests = async () => {
+    setRequestsLoading(true);
+    try {
+      const response = await fetch("/api/sku/change-requests");
+      const json = await response.json() as { success?: boolean; data?: SkuChangeRequest[]; error?: string };
+      if (!response.ok || !json.success) throw new Error(json.error || "读取 SKU 修改申请失败");
+      setRequests(json.data || []);
+    } catch (error) {
+      toast.error("SKU 修改申请加载失败", { description: error instanceof Error ? error.message : "请稍后重试" });
+    } finally {
+      setRequestsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetch("/api/auth/me")
+      .then((response) => response.json())
+      .then((json) => setUser(json))
+      .catch(() => setUser({}));
+    const timer = setTimeout(() => { void loadRequests(); }, 0);
+    return () => clearTimeout(timer);
+  }, []);
+
+  const matchedSkus = query.trim()
+    ? skuList.filter((sku) => {
+      const keyword = query.trim().toLowerCase();
+      return displayText(sku.SKU).toLowerCase().includes(keyword)
+        || displayText(sku.中文品名).toLowerCase().includes(keyword);
+    }).slice(0, 20)
     : [];
 
-  const handleSkuSelect = (s: SkuOption) => {
-    setForm({ ...form, SKU: s.SKU || "", 商品名称: s.中文品名 || "" });
-    setSkuQuery(s.SKU || "");
-    setShowSku(false);
+  const selectSku = (sku: SkuOption) => {
+    setSelectedSku(sku);
+    setQuery(`${displayText(sku.SKU)} / ${displayText(sku.中文品名)}`);
+    setShowMatches(false);
+    setEdits(Object.fromEntries(SKU_CHANGE_EDITABLE_FIELDS.map((field) => [field, displayText(sku[field])])));
   };
 
-  const handleSubmit = async () => {
-    if (!form.SKU || !form.销售额) { toast.error("请填写 SKU 和 销售额"); return; }
-    const ok = await submit("sales", {
-      ...form,
-      售出数量: parseInt(form.售出数量) || 0,
-      销售额: parseFloat(form.销售额) || 0,
-      商品成本: parseFloat(form.商品成本) || 0,
-      eBay费用: parseFloat(form.eBay费用) || 0,
-      广告费: parseFloat(form.广告费) || 0,
-      橙联履约费: parseFloat(form.橙联履约费) || 0,
-      退款金额: parseFloat(form.退款金额) || 0,
-    });
-    if (ok) setForm({ ...form, 售出数量: "1", 销售额: "", 商品成本: "", eBay费用: "", 广告费: "", 橙联履约费: "", 退款金额: "0", 备注: "" });
+  const original = selectedSku ? pickSkuChangeFields(selectedSku) : {};
+  const { changedFields } = selectedSku
+    ? buildSkuChangePatch({ original, updates: edits })
+    : { changedFields: [] };
+
+  const submitRequest = async () => {
+    if (!selectedSku?.recordId || !selectedSku.SKU) {
+      toast.error("请先选择已有 SKU");
+      return;
+    }
+    if (changedFields.length === 0) {
+      toast.error("没有可提交的修改");
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const response = await fetch("/api/sku/change-requests", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sku: selectedSku.SKU,
+          skuRecordId: selectedSku.recordId,
+          original,
+          updates: edits,
+        }),
+      });
+      const json = await response.json() as { success?: boolean; error?: string; message?: string };
+      if (!response.ok || !json.success) throw new Error(json.error || "提交失败");
+      toast.success(json.message || "SKU 修改申请已提交");
+      setSelectedSku(null);
+      setQuery("");
+      setEdits({});
+      await loadRequests();
+    } catch (error) {
+      toast.error("提交失败", { description: error instanceof Error ? error.message : "服务端暂不可用" });
+    } finally {
+      setSubmitting(false);
+    }
   };
 
-  return <Card>
-    <CardHeader><CardTitle className="text-base">每日销售数据录入</CardTitle><CardDescription>每卖出一单记录一次，写入 07_销售日报</CardDescription></CardHeader>
-    <CardContent className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-      <div className="relative">
-        <label className="text-xs text-gray-400">SKU *</label>
-        <Input
-          placeholder="输入 SKU 编码或品名…"
-          value={skuQuery}
-          onChange={e => { setSkuQuery(e.target.value); setShowSku(true); }}
-          onFocus={() => { if (skuQuery) setShowSku(true); }}
-          onBlur={() => setTimeout(() => setShowSku(false), 200)}
-        />
-        {showSku && matched.length > 0 && (
-          <div className="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-hidden">
-            <ScrollArea className="max-h-48">
-              {matched.map((s, i) => (
-                <button key={String(s._idx ?? i)} className="w-full text-left px-3 py-2 hover:bg-blue-50 border-b border-gray-50 last:border-b-0" onMouseDown={() => handleSkuSelect(s)}>
-                  <span className="text-sm font-medium text-gray-900">{s.SKU}</span>
-                  <span className="text-xs text-gray-400 ml-2">{s.中文品名}</span>
-                </button>
+  const reviewRequest = async (request: SkuChangeRequest, action: "approve" | "reject") => {
+    const note = action === "reject"
+      ? window.prompt("请输入否决原因（可留空）") || ""
+      : "";
+    if (action === "approve" && !window.confirm(`确认通过 ${request.sku} 的修改申请吗？`)) return;
+
+    setReviewing(request.recordId);
+    try {
+      const response = await fetch("/api/sku/change-requests", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ requestId: request.recordId, action, reviewNote: note }),
+      });
+      const json = await response.json() as { success?: boolean; error?: string; message?: string };
+      if (!response.ok || !json.success) throw new Error(json.error || "审核失败");
+      toast.success(json.message || "审核完成");
+      await loadRequests();
+    } catch (error) {
+      toast.error("审核失败", { description: error instanceof Error ? error.message : "服务端暂不可用" });
+    } finally {
+      setReviewing(null);
+    }
+  };
+
+  const pendingRequests = requests.filter((request) => request.status === "待审核");
+  const recentRequests = requests.filter((request) => request.status !== "待审核").slice(0, 5);
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <p className="text-xs font-medium text-gray-500">存量 SKU 补录</p>
+        <p className="mt-1 text-xs text-gray-400">运营和采购提交已有 SKU 的修改申请，管理员通过后写入 01_SKU主数据。</p>
+      </div>
+
+      <div className="space-y-3 rounded-md border border-slate-100 bg-slate-50/50 p-3">
+        <div className="relative">
+          <label className="mb-1 block text-xs text-gray-400">选择已有 SKU</label>
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-300" />
+            <Input
+              className="pl-9"
+              placeholder="输入 SKU 编码或中文品名"
+              value={query}
+              onChange={(event) => {
+                setQuery(event.target.value);
+                setSelectedSku(null);
+                setShowMatches(true);
+              }}
+              onFocus={() => { if (query) setShowMatches(true); }}
+              onBlur={() => setTimeout(() => setShowMatches(false), 200)}
+            />
+          </div>
+          {showMatches && matchedSkus.length > 0 && (
+            <div className="absolute z-20 mt-1 w-full overflow-hidden rounded-md border border-slate-200 bg-white shadow-lg">
+              <ScrollArea className="max-h-56">
+                {matchedSkus.map((sku, index) => (
+                  <button
+                    key={sku.recordId || String(index)}
+                    className="w-full border-b border-slate-50 px-3 py-2 text-left last:border-b-0 hover:bg-blue-50"
+                    onMouseDown={() => selectSku(sku)}
+                  >
+                    <span className="text-sm font-medium text-slate-900">{displayText(sku.SKU)}</span>
+                    <span className="ml-2 text-xs text-slate-400">{displayText(sku.中文品名)}</span>
+                  </button>
+                ))}
+              </ScrollArea>
+            </div>
+          )}
+          {showMatches && query && matchedSkus.length === 0 && (
+            <div className="absolute z-20 mt-1 w-full rounded-md border border-slate-200 bg-white p-2 text-center text-sm text-slate-400">未匹配</div>
+          )}
+        </div>
+
+        {selectedSku && (
+          <div className="space-y-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              {SKU_CHANGE_EDITABLE_FIELDS.map((field) => (
+                <div key={field} className={field === "描述" || field === "备注" ? "sm:col-span-3" : ""}>
+                  <label className="text-[10px] text-gray-400">{field}</label>
+                  {field === "描述" || field === "备注" ? (
+                    <Textarea
+                      value={edits[field] || ""}
+                      onChange={(event) => setEdits({ ...edits, [field]: event.target.value })}
+                      className="min-h-20 bg-white"
+                    />
+                  ) : (
+                    <Input
+                      value={edits[field] || ""}
+                      onChange={(event) => setEdits({ ...edits, [field]: event.target.value })}
+                      className="bg-white"
+                    />
+                  )}
+                </div>
               ))}
-            </ScrollArea>
+            </div>
+
+            {changedFields.length > 0 && (
+              <div className="rounded-md border border-blue-100 bg-blue-50 px-3 py-2">
+                <p className="text-xs font-medium text-blue-700">修改字段</p>
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  {changedFields.map((field) => (
+                    <Badge key={field} variant="secondary" className="bg-white text-blue-700">{field}</Badge>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <Button type="button" onClick={submitRequest} disabled={submitting || changedFields.length === 0} className="w-full">
+              {submitting ? <RefreshCw className="animate-spin" /> : <Send />}
+              提交修改申请
+            </Button>
           </div>
         )}
-        {showSku && skuQuery && matched.length === 0 && (
-          <div className="absolute z-20 w-full mt-1 bg-white border border-gray-200 rounded-lg shadow-lg p-2 text-center text-sm text-gray-400">未匹配</div>
-        )}
       </div>
-      <div><label className="text-xs text-gray-400">商品名称</label><Input value={form.商品名称} onChange={e => setForm({...form, 商品名称: e.target.value})} placeholder="自动填充" /></div>
-      <div><label className="text-xs text-gray-400">店铺</label><Select value={form.店铺} onValueChange={(v) => setForm({...form, 店铺: v || "NewPower"})}><SelectTrigger><SelectValue /></SelectTrigger><SelectContent>{STORES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}</SelectContent></Select></div>
-      <div><label className="text-xs text-gray-400">日期</label><Input value={form.日期} onChange={e => setForm({...form, 日期: e.target.value})} /></div>
-      <div><label className="text-xs text-gray-400">售出数量 *</label><Input type="number" value={form.售出数量} onChange={e => setForm({...form, 售出数量: e.target.value})} /></div>
-      <div><label className="text-xs text-gray-400">销售额 ($) *</label><Input type="number" step="0.01" value={form.销售额} onChange={e => setForm({...form, 销售额: e.target.value})} placeholder="必填" /></div>
-      <div><label className="text-xs text-gray-400">商品成本 ($)</label><Input type="number" step="0.01" value={form.商品成本} onChange={e => setForm({...form, 商品成本: e.target.value})} /></div>
-      <div><label className="text-xs text-gray-400">eBay费用 ($)</label><Input type="number" step="0.01" value={form.eBay费用} onChange={e => setForm({...form, eBay费用: e.target.value})} /></div>
-      <div><label className="text-xs text-gray-400">广告费 ($)</label><Input type="number" step="0.01" value={form.广告费} onChange={e => setForm({...form, 广告费: e.target.value})} /></div>
-      <div><label className="text-xs text-gray-400">橙联履约费 ($)</label><Input type="number" step="0.01" value={form.橙联履约费} onChange={e => setForm({...form, 橙联履约费: e.target.value})} /></div>
-      <div><label className="text-xs text-gray-400">退款金额 ($)</label><Input type="number" step="0.01" value={form.退款金额} onChange={e => setForm({...form, 退款金额: e.target.value})} /></div>
-      <div className="sm:col-span-2"><label className="text-xs text-gray-400">备注</label><Input value={form.备注} onChange={e => setForm({...form, 备注: e.target.value})} /></div>
-      <div className="sm:col-span-2"><Button onClick={handleSubmit} disabled={submitting} className="w-full">{submitting ? "保存中..." : "保存到飞书"}</Button></div>
+
+      <div className="rounded-md border border-slate-100 bg-white">
+        <div className="flex items-center justify-between border-b border-slate-100 px-3 py-2">
+          <div>
+            <p className="text-sm font-medium text-slate-700">修改申请</p>
+            <p className="text-xs text-slate-400">{user.isAdmin ? "管理员审核队列" : "我的提交记录"}</p>
+          </div>
+          <Button type="button" variant="outline" size="sm" onClick={loadRequests} disabled={requestsLoading}>
+            {requestsLoading ? <RefreshCw className="animate-spin" /> : <RefreshCw />}
+            刷新
+          </Button>
+        </div>
+
+        <div className="space-y-2 p-3">
+          {requestsLoading ? (
+            <p className="py-6 text-center text-sm text-slate-400">加载中...</p>
+          ) : requests.length === 0 ? (
+            <p className="py-6 text-center text-sm text-slate-400">暂无修改申请</p>
+          ) : (
+            [...pendingRequests, ...recentRequests].map((request) => (
+              <div key={request.recordId} className="rounded-md border border-slate-100 p-3">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-sm font-semibold text-slate-900">{request.sku}</p>
+                      <Badge className={request.status === "待审核" ? "bg-amber-100 text-amber-700 hover:bg-amber-100" : request.status === "已通过" ? "bg-emerald-100 text-emerald-700 hover:bg-emerald-100" : "bg-slate-100 text-slate-600 hover:bg-slate-100"}>
+                        {request.status}
+                      </Badge>
+                    </div>
+                    <p className="mt-1 text-xs text-slate-400">提交人：{request.submitter || "-"} · 字段：{request.changedFields.join("、") || "-"}</p>
+                  </div>
+                  {user.isAdmin && request.status === "待审核" && (
+                    <div className="flex gap-1">
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="h-8 border-emerald-200 px-2 text-emerald-700 hover:bg-emerald-50"
+                        disabled={reviewing === request.recordId}
+                        onClick={() => reviewRequest(request, "approve")}
+                      >
+                        {reviewing === request.recordId ? <RefreshCw className="size-3 animate-spin" /> : <BadgeCheck className="size-3" />}
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="h-8 border-red-200 px-2 text-red-700 hover:bg-red-50"
+                        disabled={reviewing === request.recordId}
+                        onClick={() => reviewRequest(request, "reject")}
+                      >
+                        {reviewing === request.recordId ? <RefreshCw className="size-3 animate-spin" /> : <BadgeX className="size-3" />}
+                      </Button>
+                    </div>
+                  )}
+                </div>
+                <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                  {request.changedFields.slice(0, 6).map((field) => (
+                    <div key={field} className="rounded-md bg-slate-50 px-2 py-1.5 text-xs">
+                      <p className="font-medium text-slate-600">{field}</p>
+                      <p className="mt-0.5 truncate text-slate-400">原：{displayText(request.original[field]) || "-"}</p>
+                      <p className="mt-0.5 truncate text-slate-700">新：{displayText(request.patch[field]) || "-"}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ==============================================================
+//  销售日报导入
+// ==============================================================
+type SalesImportResult = {
+  success?: boolean;
+  commit?: boolean;
+  ready?: number;
+  created?: number;
+  duplicates?: Array<{ sourceRow: number; importKey: string; SKU?: unknown; 店铺?: unknown; 售出数量?: unknown }>;
+  errors?: Array<{ row: number; message: string }>;
+  summary?: {
+    totalRows: number;
+    validRows: number;
+    errorRows: number;
+    dateRange?: { from: string; to: string };
+    stores: string[];
+  };
+  rows?: Array<{ sourceRow: number; importKey: string; SKU?: unknown; 店铺?: unknown; 售出数量?: unknown }>;
+  scan?: {
+    status?: "started" | "skipped";
+    reason?: string;
+    limit?: number;
+    processed?: number;
+    deducted?: number;
+    skipped?: number;
+    exceptions?: number;
+    warnings?: number;
+    notificationStatus?: string;
+  };
+  error?: string;
+};
+
+function SalesImportPanel() {
+  const [file, setFile] = useState<File | null>(null);
+  const [preview, setPreview] = useState<SalesImportResult | null>(null);
+  const [result, setResult] = useState<SalesImportResult | null>(null);
+  const [loading, setLoading] = useState<"preview" | "commit" | null>(null);
+
+  const submitImport = async (commit: boolean) => {
+    if (!file) { toast.error("请选择店小秘 XLSX 文件"); return; }
+    setLoading(commit ? "commit" : "preview");
+    if (!commit) setResult(null);
+    try {
+      const formData = new FormData();
+      formData.append("file", file, file.name);
+      formData.append("commit", commit ? "true" : "false");
+      const response = await fetch("/api/sales/import", { method: "POST", body: formData });
+      const json = await response.json() as SalesImportResult;
+      if (!response.ok || !json.success) {
+        toast.error(commit ? "导入失败" : "解析失败", { description: json.error });
+        return;
+      }
+      if (commit) {
+        setResult(json);
+        const scanDescription = json.scan?.status === "started"
+          ? "库存扣减后台处理中"
+          : json.scan?.status === "skipped"
+            ? "没有新增记录，库存扫描已跳过"
+            : "库存状态已返回";
+        toast.success("销售日报已写入", { description: `新增 ${json.created || 0} 条，重复 ${json.duplicates?.length || 0} 条；${scanDescription}` });
+      } else {
+        setPreview(json);
+        toast.success("解析完成", { description: `可导入 ${json.ready || 0} 条，异常 ${json.errors?.length || 0} 条` });
+      }
+    } catch (error) {
+      toast.error("请求失败", { description: error instanceof Error ? error.message : "网络错误" });
+    } finally {
+      setLoading(null);
+    }
+  };
+
+  const canImport = Boolean(file && preview && (preview.ready || 0) > 0 && loading !== "commit");
+  const summary = result?.summary || preview?.summary;
+
+  return <Card>
+    <CardHeader>
+      <CardTitle className="flex items-center gap-2 text-base"><FileSpreadsheet className="size-4" /> 销售日报导入</CardTitle>
+      <CardDescription>店小秘销售数据写入 07_销售日报，并同步库存扣减与店铺销售看板</CardDescription>
+    </CardHeader>
+    <CardContent className="space-y-4">
+      <div className="grid gap-3 sm:grid-cols-[1fr_auto_auto] sm:items-end">
+        <div>
+          <label className="mb-1 block text-xs text-gray-400">店小秘 XLSX 文件</label>
+          <Input
+            type="file"
+            accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+            onChange={(event) => {
+              setFile(event.target.files?.[0] || null);
+              setPreview(null);
+              setResult(null);
+            }}
+          />
+        </div>
+        <Button type="button" variant="outline" onClick={() => submitImport(false)} disabled={!file || loading !== null}>
+          {loading === "preview" ? <RefreshCw className="animate-spin" /> : <Upload />}
+          解析预览
+        </Button>
+        <Button type="button" onClick={() => submitImport(true)} disabled={!canImport}>
+          {loading === "commit" ? <RefreshCw className="animate-spin" /> : <CheckCircle2 />}
+          导入并扣减库存
+        </Button>
+      </div>
+
+      {summary && (
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+          <ImportMetric label="总行数" value={summary.totalRows} />
+          <ImportMetric label="有效行" value={summary.validRows} />
+          <ImportMetric label="可导入" value={preview?.ready ?? result?.created ?? 0} />
+          <ImportMetric label="重复" value={preview?.duplicates?.length ?? result?.duplicates?.length ?? 0} />
+          <ImportMetric label="异常" value={summary.errorRows} tone={summary.errorRows > 0 ? "warn" : "default"} />
+        </div>
+      )}
+
+      {summary?.dateRange && (
+        <div className="rounded-md border border-slate-100 bg-slate-50 px-3 py-2 text-xs text-slate-600">
+          <span className="font-medium text-slate-700">{summary.dateRange.from} 至 {summary.dateRange.to}</span>
+          <span className="mx-2 text-slate-300">|</span>
+          <span>{summary.stores.join(" / ") || "无店铺"}</span>
+        </div>
+      )}
+
+      {result?.scan && (
+        <div className="rounded-md border border-emerald-100 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
+          {result.scan.status === "started"
+            ? `销售日报已写入，库存扣减扫描已在后台启动（本次最多处理 ${result.scan.limit || 0} 条）。稍后刷新仪表盘查看库存与销售看板。`
+            : result.scan.status === "skipped"
+              ? `销售日报无新增记录，已跳过库存扣减扫描：${result.scan.reason || ""}`
+              : `库存扫描：处理 ${result.scan.processed || 0} 条，扣减 ${result.scan.deducted || 0} 条，异常 ${result.scan.exceptions || 0} 条，预警 ${result.scan.warnings || 0} 个`}
+        </div>
+      )}
+
+      {(preview?.errors?.length || result?.errors?.length) ? (
+        <ImportList
+          icon={<AlertTriangle className="size-4 text-amber-600" />}
+          title="异常行"
+          items={(result?.errors || preview?.errors || []).slice(0, 8).map((item) => `第 ${item.row} 行：${item.message}`)}
+        />
+      ) : null}
+
+      {(preview?.duplicates?.length || result?.duplicates?.length) ? (
+        <ImportList
+          title="重复记录"
+          items={(result?.duplicates || preview?.duplicates || []).slice(0, 8).map((item) => `第 ${item.sourceRow} 行：${String(item.SKU || "")} ${String(item.店铺 || "")}`)}
+        />
+      ) : null}
+
+      {(preview?.rows?.length || 0) > 0 && (
+        <ImportList
+          title="预览明细"
+          items={(preview?.rows || []).slice(0, 8).map((item) => `第 ${item.sourceRow} 行：${String(item.SKU || "")} / ${String(item.店铺 || "")} / ${String(item.售出数量 || "")} 件`)}
+        />
+      )}
     </CardContent>
   </Card>;
+}
+
+function ImportMetric({ label, value, tone = "default" }: { label: string; value: number | string; tone?: "default" | "warn" }) {
+  return (
+    <div className={`rounded-md border px-3 py-2 ${tone === "warn" ? "border-amber-100 bg-amber-50" : "border-slate-100 bg-white"}`}>
+      <p className="text-[11px] text-slate-400">{label}</p>
+      <p className="mt-0.5 text-lg font-semibold text-slate-800">{value}</p>
+    </div>
+  );
+}
+
+function ImportList({ title, items, icon }: { title: string; items: string[]; icon?: React.ReactNode }) {
+  return (
+    <div className="rounded-md border border-slate-100 bg-white">
+      <div className="flex items-center gap-2 border-b border-slate-100 px-3 py-2 text-sm font-medium text-slate-700">
+        {icon}
+        <span>{title}</span>
+      </div>
+      <div className="max-h-44 overflow-auto px-3 py-2">
+        {items.map((item) => (
+          <p key={item} className="truncate py-0.5 text-xs text-slate-500">{item}</p>
+        ))}
+      </div>
+    </div>
+  );
 }
 
 // ==============================================================

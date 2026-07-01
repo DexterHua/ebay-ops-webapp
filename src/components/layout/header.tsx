@@ -3,7 +3,7 @@
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { MODULES, STORES } from "@/types";
+import { MODULES, STORES, type StoreId } from "@/types";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { ModuleIcon } from "@/components/layout/module-icons";
@@ -35,6 +35,7 @@ export function Header() {
   const pathname = usePathname();
   const router = useRouter();
   const [userName, setUserName] = useState("");
+  const [storeIds, setStoreIds] = useState<StoreId[] | null>(null);
   const [showChangePassword, setShowChangePassword] = useState(false);
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -44,6 +45,7 @@ export function Header() {
   useEffect(() => {
     fetch("/api/auth/me").then(r => r.json()).then(d => {
       if (d.name) setUserName(d.name);
+      setStoreIds(Array.isArray(d.storeIds) ? d.storeIds : []);
     }).catch(() => {});
   }, []);
 
@@ -51,7 +53,8 @@ export function Header() {
     (m) => pathname === m.path || pathname.startsWith(m.path + "/")
   );
 
-  const activeStores = STORES.filter((s) => s.active);
+  const visibleStoreIds = new Set(storeIds || []);
+  const activeStores = storeIds ? STORES.filter((s) => s.active && visibleStoreIds.has(s.id)) : [];
   const activeStoreId = pathname.startsWith("/store/") ? pathname.split("/store/")[1] : null;
 
   const handleLogout = async () => {

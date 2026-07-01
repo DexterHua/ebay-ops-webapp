@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { existsSync, readFileSync } from "node:fs";
 import {
   DETAIL_TEMPLATE_STORES,
   buildDetailFields,
@@ -8,16 +9,33 @@ import {
 } from "@/lib/detail-template";
 
 describe("detail-template", () => {
-  it("registers the four listing store templates", () => {
+  it("registers the listing store templates", () => {
     expect(DETAIL_TEMPLATE_STORES.map((store) => store.name)).toEqual([
       "Solidparts",
       "NewPower",
       "VelocityGear",
       "TitanRig",
+      "Nexusmoto",
     ]);
     for (const store of DETAIL_TEMPLATE_STORES) {
       expect(store.templates.withBanner.templatePath).toMatch(/_with_banner\.html$/);
       expect(store.templates.noBanner.templatePath).toMatch(/_no_banner\.html$/);
+    }
+  });
+
+  it("registers Nexusmoto with both banner and no-banner templates", () => {
+    const nexusmoto = DETAIL_TEMPLATE_STORES.find((store) => store.name === "Nexusmoto");
+    expect(nexusmoto).toMatchObject({
+      id: "NX",
+      label: "Nexusmoto Auto & Moto Parts",
+      tableClass: "nx-table",
+    });
+
+    for (const template of Object.values(nexusmoto?.templates || {})) {
+      const filePath = new URL(`../../public${template.templatePath}`, import.meta.url);
+      expect(existsSync(filePath)).toBe(true);
+      expect(readFileSync(filePath, "utf8")).toContain("Nexusmoto Auto & Moto Parts");
+      expect(readFileSync(filePath, "utf8")).toContain('contenteditable="true"');
     }
   });
 

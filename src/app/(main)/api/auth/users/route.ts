@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { listUsers, addUser, removeUser, resetPassword } from "@/lib/users";
+import { listUsers, addUser, removeUser, resetPassword, updateUserPermissions } from "@/lib/users";
 import { requireAdmin } from "@/lib/session-server";
 
 function getStorageErrorMessage(error: unknown): string {
@@ -39,12 +39,12 @@ export async function POST(request: NextRequest) {
     if (authError) return authError;
 
     const body = await request.json();
-    const { action, name, password, role } = body;
+    const { action, name, password, role, storeIds } = body;
 
     switch (action) {
       case "add": {
         if (!name || !password) return NextResponse.json({ ok: false, error: "请输入姓名和密码" }, { status: 400 });
-        const r = await addUser(name, password, role);
+        const r = await addUser(name, password, role, storeIds);
         return NextResponse.json(r);
       }
       case "delete": {
@@ -55,6 +55,11 @@ export async function POST(request: NextRequest) {
       case "resetPassword": {
         if (!name || !password) return NextResponse.json({ ok: false, error: "请输入新密码" }, { status: 400 });
         const r = await resetPassword(name, password);
+        return NextResponse.json(r);
+      }
+      case "updatePermissions": {
+        if (!name) return NextResponse.json({ ok: false, error: "请指定用户" }, { status: 400 });
+        const r = await updateUserPermissions(name, role, storeIds);
         return NextResponse.json(r);
       }
       default:

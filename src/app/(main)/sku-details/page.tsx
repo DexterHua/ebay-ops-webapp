@@ -152,7 +152,7 @@ export default function SkuDetailsPage() {
         <div>
           <p className="page-kicker">SKU Lookup</p>
           <h1 className="page-title">SKU 详情</h1>
-          <p className="page-description">按 SKU、品名、英文关键词、OEM、供应商或状态快速定位商品资料与库存快照</p>
+          <p className="page-description">按 SKU、品名、英文关键词、OEM 或状态快速定位商品资料与库存快照</p>
         </div>
         <Button variant="outline" onClick={loadData} disabled={loading}>
           <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
@@ -190,7 +190,7 @@ export default function SkuDetailsPage() {
                 <Input
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
-                  placeholder="SKU / 品名 / OEM / 供应商"
+                  placeholder="SKU / 品名 / OEM / 状态"
                   className="h-9 pl-8"
                 />
               </div>
@@ -236,7 +236,7 @@ export default function SkuDetailsPage() {
                           {item.status && <Badge variant={active ? "default" : "secondary"}>{item.status}</Badge>}
                         </div>
                         <p className="mt-1 truncate text-xs text-slate-500">{item.productName || item.englishKeywords || "--"}</p>
-                        <p className="mt-0.5 truncate text-[11px] text-slate-400">{item.oem || item.supplier || item.category || "--"}</p>
+                        <p className="mt-0.5 truncate text-[11px] text-slate-400">{item.oem || item.category || "--"}</p>
                       </button>
                     );
                   })}
@@ -280,7 +280,6 @@ export default function SkuDetailsPage() {
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
                   <DetailItem label="OEM" value={textOrDash(selected.oem)} highlight />
                   <DetailItem label="类目" value={textOrDash(selected.category)} />
-                  <DetailItem label="供应商" value={textOrDash(selected.supplier)} />
                 </div>
               </CardContent>
             </Card>

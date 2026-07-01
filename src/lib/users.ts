@@ -5,6 +5,7 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "fs";
 import { join } from "path";
 import crypto from "crypto";
+import { STORES, type StoreId } from "@/types";
 
 const USER_FILE = join(process.cwd(), "data", "users.json");
 const USER_KV_KEY = "users";
@@ -24,15 +25,23 @@ export interface User {
   password: string; // sha256 哈希
   createdAt: string;
   role?: UserRole;
+  storeIds?: StoreId[];
   sessionVersion?: number;
   deletedAt?: string;
 }
 
 export type UserRole = "admin" | "purchaser" | "operator";
 
+const ACTIVE_STORE_IDS = STORES.filter((store) => store.active).map((store) => store.id);
+
 /** 判断是否为受支持的账号角色。 */
 export function isUserRole(value: unknown): value is UserRole {
   return value === "admin" || value === "purchaser" || value === "operator";
+}
+
+/** 判断是否为当前支持的活跃店铺 ID。 */
+export function isStoreId(value: unknown): value is StoreId {
+  return typeof value === "string" && ACTIVE_STORE_IDS.includes(value as StoreId);
 }
 
 /** 获取账号角色，兼容历史数据与固定管理员账号。 */
@@ -48,6 +57,21 @@ export function getUserSessionVersion(user: Pick<User, "sessionVersion">): numbe
     return user.sessionVersion;
   }
   throw new Error("账号会话版本损坏");
+}
+
+/** 获取账号可访问店铺，历史缺省账号兼容为全部活跃店铺。 */
+export function getUserStoreIds(user: Pick<User, "storeIds">): StoreId[] {
+  if (user.storeIds === undefined) return [...ACTIVE_STORE_IDS];
+  if (!Array.isArray(user.storeIds)) return [];
+  const allowed = new Set(user.storeIds.filter(isStoreId));
+  return ACTIVE_STORE_IDS.filter((storeId) => allowed.has(storeId));
+}
+
+function normalizeStoreIdsInput(value: unknown): StoreId[] | null | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value) || !value.every(isStoreId)) return null;
+  const allowed = new Set(value);
+  return ACTIVE_STORE_IDS.filter((storeId) => allowed.has(storeId));
 }
 
 function hashPassword(pw: string): string {
@@ -88,6 +112,7 @@ function parseHashedUserSeed(raw: string): User[] {
       typeof user.createdAt !== "string" ||
       !DATE_PATTERN.test(user.createdAt) ||
       (user.role !== undefined && !isUserRole(user.role)) ||
+      (user.storeIds !== undefined && (!Array.isArray(user.storeIds) || !user.storeIds.every(isStoreId))) ||
       !validSessionVersion ||
       (user.deletedAt !== undefined && typeof user.deletedAt !== "string")
     ) {
@@ -223,14 +248,24 @@ export async function listUsers(): Promise<Omit<User, "password">[]> {
     name: user.name,
     createdAt: user.createdAt,
     role: getUserRole(user),
+    storeIds: getUserStoreIds(user),
     sessionVersion: getUserSessionVersion(user),
   }));
 }
 
 /** 新增用户 */
-export async function addUser(name: string, password: string, role: unknown = "operator"): Promise<{ ok: boolean; error?: string }> {
+export async function addUser(
+  name: string,
+  password: string,
+  role: unknown = "operator",
+  storeIds?: unknown
+): Promise<{ ok: boolean; error?: string }> {
   if (!isUserRole(role)) {
     return { ok: false, error: "角色无效" };
+  }
+  const normalizedStoreIds = normalizeStoreIdsInput(storeIds);
+  if (normalizedStoreIds === null) {
+    return { ok: false, error: "店铺分配无效" };
   }
   return mutateUsers(users => {
     const existing = users.find(u => u.name === name);
@@ -243,11 +278,51 @@ export async function addUser(name: string, password: string, role: unknown = "o
       existing.password = hashPassword(password);
       existing.createdAt = createdAt;
       existing.role = role;
+      if (normalizedStoreIds === undefined) {
+        delete existing.storeIds;
+      } else {
+        existing.storeIds = normalizedStoreIds;
+      }
       existing.sessionVersion = nextVersion;
       delete existing.deletedAt;
       return { ok: true };
     }
-    users.push({ name, password: hashPassword(password), createdAt, role, sessionVersion: 0 });
+    users.push({
+      name,
+      password: hashPassword(password),
+      createdAt,
+      role,
+      ...(normalizedStoreIds === undefined ? {} : { storeIds: normalizedStoreIds }),
+      sessionVersion: 0,
+    });
+    return { ok: true };
+  });
+}
+
+/** 编辑用户角色和店铺权限。 */
+export async function updateUserPermissions(
+  name: string,
+  role: unknown,
+  storeIds: unknown
+): Promise<{ ok: boolean; error?: string }> {
+  if (name === "车泉") return { ok: false, error: "不允许修改管理员账号权限" };
+  if (!isUserRole(role)) {
+    return { ok: false, error: "角色无效" };
+  }
+  const normalizedStoreIds = normalizeStoreIdsInput(storeIds);
+  if (normalizedStoreIds === null) {
+    return { ok: false, error: "店铺分配无效" };
+  }
+  return mutateUsers(users => {
+    const user = users.find(u => u.name === name && isActiveUser(u));
+    if (!user) return { ok: false, error: "用户不存在" };
+    user.role = role;
+    if (normalizedStoreIds === undefined) {
+      delete user.storeIds;
+    } else {
+      user.storeIds = normalizedStoreIds;
+    }
+    user.sessionVersion = getUserSessionVersion(user) + 1;
     return { ok: true };
   });
 }

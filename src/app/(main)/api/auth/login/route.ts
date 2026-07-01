@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { SignJWT } from "jose";
 import { cookies } from "next/headers";
-import { getUserRole, getUserSessionVersion, verifyUser } from "@/lib/users";
+import { getUserRole, getUserSessionVersion, getUserStoreIds, verifyUser } from "@/lib/users";
 import { getJwtSecret } from "@/lib/auth-config";
 
 export async function POST(request: NextRequest) {
@@ -21,6 +21,7 @@ export async function POST(request: NextRequest) {
 
     const role = getUserRole(u);
     const sessionVersion = getUserSessionVersion(u);
+    const storeIds = getUserStoreIds(u);
     const admin = role === "admin";
 
     // 签发 JWT，服务端仍会以持久化账号信息为准重新校验。
@@ -39,7 +40,7 @@ export async function POST(request: NextRequest) {
       path: "/",
     });
 
-    return NextResponse.json({ ok: true, name: u.name, isAdmin: admin, role });
+    return NextResponse.json({ ok: true, name: u.name, isAdmin: admin, role, storeIds });
   } catch (error) {
     console.error("[auth/login] 登录服务异常", error);
     return NextResponse.json({ ok: false, error: "服务错误" }, { status: 500 });

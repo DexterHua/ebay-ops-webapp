@@ -58,6 +58,7 @@ import {
   removeUser,
   resetPassword,
   seedUsers,
+  updateUserPermissions,
   verifyUser,
   type User,
 } from "./users";
@@ -177,8 +178,20 @@ describe("用户持久化", () => {
     ]);
 
     expect(await listUsers()).toEqual([
-      { name: "车泉", createdAt: "2026-06-03", role: "admin", sessionVersion: 0 },
-      { name: "旧账号", createdAt: "2026-06-03", role: "operator", sessionVersion: 0 },
+      {
+        name: "车泉",
+        createdAt: "2026-06-03",
+        role: "admin",
+        storeIds: ["NP", "VG", "TR", "SP", "NM"],
+        sessionVersion: 0,
+      },
+      {
+        name: "旧账号",
+        createdAt: "2026-06-03",
+        role: "operator",
+        storeIds: ["NP", "VG", "TR", "SP", "NM"],
+        sessionVersion: 0,
+      },
     ]);
   });
 
@@ -198,6 +211,78 @@ describe("用户持久化", () => {
     expect(await listUsers()).toEqual([
       expect.objectContaining({ name: "新管理员", role: "admin" }),
       expect.objectContaining({ name: "新采购", role: "purchaser" }),
+    ]);
+  });
+
+  test("新增用户保存有效店铺分配并在列表中返回", async () => {
+    expect(await addUser("店铺运营", "123456", "operator", ["NP", "SP"])).toEqual({ ok: true });
+
+    expect(await listUsers()).toEqual([
+      expect.objectContaining({ name: "店铺运营", storeIds: ["NP", "SP"] }),
+    ]);
+  });
+
+  test("新增用户拒绝无效店铺分配", async () => {
+    expect(await addUser("异常店铺", "123456", "operator", ["NP", "BAD"] as never)).toEqual({
+      ok: false,
+      error: "店铺分配无效",
+    });
+    expect(await listUsers()).toEqual([]);
+  });
+
+  test("历史账号没有店铺字段时兼容为全部活跃店铺", async () => {
+    setUsers([{ name: "旧运营", password: "secret", createdAt: "2026-06-03", role: "operator" }]);
+
+    expect(await listUsers()).toEqual([
+      expect.objectContaining({ name: "旧运营", storeIds: ["NP", "VG", "TR", "SP", "NM"] }),
+    ]);
+  });
+
+  test("显式空店铺分配表示没有单店看板权限", async () => {
+    setUsers([{ name: "无店铺", password: "secret", createdAt: "2026-06-03", role: "operator", storeIds: [] }]);
+
+    expect(await listUsers()).toEqual([
+      expect.objectContaining({ name: "无店铺", storeIds: [] }),
+    ]);
+  });
+
+  test("编辑用户权限会更新角色和店铺并递增会话版本", async () => {
+    setUsers([
+      {
+        name: "运营",
+        password: hashPassword("old-password"),
+        createdAt: "2026-06-03",
+        role: "operator",
+        storeIds: ["NP"],
+        sessionVersion: 2,
+      },
+    ]);
+
+    expect(await updateUserPermissions("运营", "purchaser", ["VG", "SP"])).toEqual({ ok: true });
+
+    expect(await listUsers()).toEqual([
+      expect.objectContaining({
+        name: "运营",
+        role: "purchaser",
+        storeIds: ["VG", "SP"],
+        sessionVersion: 3,
+      }),
+    ]);
+  });
+
+  test("编辑用户权限拒绝固定管理员、无效角色和无效店铺", async () => {
+    setUsers([
+      { name: "车泉", password: "secret", createdAt: "2026-06-03", role: "admin", sessionVersion: 0 },
+      { name: "运营", password: "secret", createdAt: "2026-06-03", role: "operator", sessionVersion: 0 },
+    ]);
+
+    expect(await updateUserPermissions("车泉", "operator", ["NP"])).toEqual({ ok: false, error: "不允许修改管理员账号权限" });
+    expect(await updateUserPermissions("运营", "viewer" as never, ["NP"])).toEqual({ ok: false, error: "角色无效" });
+    expect(await updateUserPermissions("运营", "operator", ["BAD"] as never)).toEqual({ ok: false, error: "店铺分配无效" });
+
+    expect(await listUsers()).toEqual([
+      expect.objectContaining({ name: "车泉", role: "admin", sessionVersion: 0 }),
+      expect.objectContaining({ name: "运营", role: "operator", storeIds: ["NP", "VG", "TR", "SP", "NM"], sessionVersion: 0 }),
     ]);
   });
 
@@ -306,6 +391,7 @@ describe("服务端会话", () => {
       name: "采购员",
       role: "purchaser",
       isAdmin: false,
+      storeIds: ["NP", "VG", "TR", "SP", "NM"],
       sessionVersion: 2,
     });
     expect(authToken.jwtVerify).toHaveBeenCalledWith(
@@ -313,6 +399,30 @@ describe("服务端会话", () => {
       expect.any(Uint8Array),
       { algorithms: ["HS256"] }
     );
+  });
+
+  test("会话返回持久化账号的规范化店铺权限", async () => {
+    setUsers([
+      {
+        name: "店铺运营",
+        password: "secret",
+        createdAt: "2026-06-03",
+        role: "operator",
+        sessionVersion: 1,
+        storeIds: ["VG"],
+      },
+    ]);
+    authToken.payload = { name: "店铺运营", storeIds: ["NP"], sessionVersion: 1 };
+
+    const { requireSession } = await import("./session-server");
+
+    await expect(requireSession()).resolves.toEqual({
+      name: "店铺运营",
+      role: "operator",
+      isAdmin: false,
+      sessionVersion: 1,
+      storeIds: ["VG"],
+    });
   });
 
   test("旧 token 与旧用户数据均按会话版本 0 兼容", async () => {
@@ -325,6 +435,7 @@ describe("服务端会话", () => {
       name: "旧账号",
       role: "operator",
       isAdmin: false,
+      storeIds: ["NP", "VG", "TR", "SP", "NM"],
       sessionVersion: 0,
     });
   });
@@ -404,6 +515,7 @@ describe("服务端会话", () => {
       name: "车泉",
       role: "admin",
       isAdmin: true,
+      storeIds: ["NP", "VG", "TR", "SP", "NM"],
       sessionVersion: 0,
     });
   });

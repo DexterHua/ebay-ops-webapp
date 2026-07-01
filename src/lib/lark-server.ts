@@ -1,5 +1,5 @@
 import { execFile } from "child_process";
-import { unlinkSync, writeFileSync } from "fs";
+import { mkdirSync, rmSync, unlinkSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { basename, delimiter, dirname, isAbsolute, join, relative } from "path";
 import { promisify } from "util";
@@ -25,7 +25,13 @@ const TABLE_ENV_KEYS = {
   inventoryException: "LARK_TABLE_INVENTORY_EXCEPTION",
   inventoryTransaction: "LARK_TABLE_INVENTORY_TRANSACTION",
   inventoryWarning: "LARK_TABLE_INVENTORY_WARNING",
+  exchangeRate: "LARK_TABLE_MONTHLY_EXCHANGE_RATE",
+  operatingDaySummary: "LARK_TABLE_OPERATING_DAY_SUMMARY",
+  operatingPeriodSummary: "LARK_TABLE_OPERATING_PERIOD_SUMMARY",
+  skuPeriodSummary: "LARK_TABLE_SKU_PERIOD_SUMMARY",
+  profitBreakdown: "LARK_TABLE_PROFIT_BREAKDOWN",
   finance: "LARK_TABLE_FINANCE",
+  skuChangeRequest: "LARK_TABLE_SKU_CHANGE_REQUESTS",
 } as const;
 
 export type LarkTable = keyof typeof TABLE_ENV_KEYS;
@@ -84,6 +90,10 @@ export function getLarkBaseTokenForTable(table?: LarkTable): string {
 
 export function getLarkTableId(table: LarkTable): string {
   return getRequiredEnv(TABLE_ENV_KEYS[table]);
+}
+
+export function isLarkTableConfigured(table: LarkTable): boolean {
+  return Boolean(getRuntimeEnv(TABLE_ENV_KEYS[table])?.trim());
 }
 
 export function getLarkReadLimit(): number {
@@ -658,28 +668,72 @@ export async function downloadLarkMedia(fileToken: string): Promise<{
   contentType: string;
   filename?: string;
 }> {
-  const response = await fetch(`https://open.feishu.cn/open-apis/drive/v1/medias/${fileToken}/download`, {
-    headers: { Authorization: `Bearer ${await getTenantAccessToken()}` },
-  });
-  if (!response.ok) {
-    let message = response.statusText;
-    try {
-      const result = await response.json() as { msg?: string; error?: { message?: string } };
-      message = result.msg || result.error?.message || message;
-    } catch {
-      // 下载接口失败时未必返回 JSON。
+  // 尝试 1: DRIVE OPEN API (POST) — 适用于 Drive 文件
+  const tenantToken = await getTenantAccessToken();
+  const authHeader = { Authorization: `Bearer ${tenantToken}` };
+  try {
+    const res = await fetch(
+      `https://open.feishu.cn/open-apis/drive/v1/files/${fileToken}/download`,
+      { method: "POST", headers: { ...authHeader, "Content-Type": "application/json" }, body: "{}", redirect: "follow" },
+    );
+    if (res.ok) {
+      const ct = res.headers.get("content-type") || "";
+      if (!ct.includes("application/json")) {
+        const cd = res.headers.get("content-disposition") || "";
+        return { data: await res.arrayBuffer(), contentType: ct || "application/octet-stream", filename: filenameFromContentDisposition(cd) };
+      }
     }
-    throw new Error(`飞书附件下载失败（${response.status}）：${message}`);
+  } catch { /* 忽略 */ }
+
+  // 尝试 2: MEDIA OPEN API (GET) — 适用于 Media/bitable 素材
+  try {
+    const res = await fetch(
+      `https://open.feishu.cn/open-apis/drive/v1/medias/${fileToken}/download`,
+      { headers: authHeader },
+    );
+    if (res.ok) {
+      const cd = res.headers.get("content-disposition") || "";
+      return { data: await res.arrayBuffer(), contentType: res.headers.get("content-type") || "application/octet-stream", filename: filenameFromContentDisposition(cd) };
+    }
+  } catch { /* 忽略 */ }
+
+  // 尝试 3: Lark CLI (用户身份) — 兼容用户上传的文件
+  if (canFallbackToLocalLarkCli()) {
+    // lark-cli 的 --output 要求相对路径，故在 tmpdir 下创建子目录并 cd 进去
+    const tmpSubdir = join(tmpdir(), `lark_dl_${Date.now()}`);
+    try {
+      mkdirSync(tmpSubdir, { recursive: true });
+      const tmpFilename = `download_${fileToken}`;
+      // 方式 a: drive +download
+      try {
+        await runLarkCli(["drive", "+download", "--file-token", fileToken, "--output", `./${tmpFilename}`, "--as", "user"], { cwd: tmpSubdir });
+        const fp = join(tmpSubdir, tmpFilename);
+        const { readFile, stat } = await import("fs/promises");
+        const s = await stat(fp).catch(() => null);
+        if (s && s.size > 0) {
+          const buffer = await readFile(fp);
+          return { data: buffer.buffer, contentType: "application/octet-stream", filename: undefined };
+        }
+      } catch { /* fall through */ }
+      // 方式 b: api GET media
+      try {
+        await runLarkCli(["api", "GET", `/open-apis/drive/v1/medias/${fileToken}/download`, "--as", "user", "--output", `./${tmpFilename}`], { cwd: tmpSubdir });
+        const fp = join(tmpSubdir, tmpFilename);
+        const { readFile, stat } = await import("fs/promises");
+        const s = await stat(fp).catch(() => null);
+        if (s && s.size > 0) {
+          const buffer = await readFile(fp);
+          return { data: buffer.buffer, contentType: "application/octet-stream", filename: undefined };
+        }
+      } catch { /* fall through */ }
+    } catch { /* lark-cli 下载失败 */ }
+    finally {
+      try { rmSync(tmpSubdir, { recursive: true, force: true }); } catch { /* 清理 */ }
+    }
   }
 
-  const contentDisposition = response.headers.get("content-disposition") || "";
-  return {
-    data: await response.arrayBuffer(),
-    contentType: response.headers.get("content-type") || "application/octet-stream",
-    filename: filenameFromContentDisposition(contentDisposition),
-  };
+  throw new Error(`飞书附件下载失败（404）：file not found`);
 }
-
 /** 发送用户私聊文本消息。 */
 export async function sendLarkTextToUser(userId: string, text: string): Promise<string | undefined> {
   assertLarkWriteEnabled();

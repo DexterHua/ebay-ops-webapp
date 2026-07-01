@@ -112,7 +112,7 @@ export function buildInventoryUserMessage(skus: Array<{
       const dsLabel = s.totalSales > 0
         ? `日均${s.dailySales}件（✅自动：累计${s.totalSales}件）`
         : `日均${s.dailySales}件（⚠️人工：尚无销售记录）`;
-      output += `  ${s.sku} | ${s.productName} | 采购¥${s.cost} | 在途${s.inTransit}件 | 本地${s.local}件 | 补货${s.replenishCycle}天 | ${dsLabel} | ${s.status}\n`;
+      output += `  ${s.sku} | ${s.productName} | 采购¥${s.cost} | 橙联可售${s.available}件 | 在途${s.inTransit}件 | 本地${s.local}件 | 补货${s.replenishCycle}天 | ${dsLabel} | ${s.status}\n`;
     });
   }
 

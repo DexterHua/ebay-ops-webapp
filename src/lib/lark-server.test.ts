@@ -69,6 +69,12 @@ describe("飞书表格环境变量", () => {
     ["shipmentBatch", "LARK_TABLE_SHIPMENT_BATCH"],
     ["inventoryDetail", "LARK_TABLE_INVENTORY_DETAIL"],
     ["inventoryException", "LARK_TABLE_INVENTORY_EXCEPTION"],
+    ["exchangeRate", "LARK_TABLE_MONTHLY_EXCHANGE_RATE"],
+    ["operatingDaySummary", "LARK_TABLE_OPERATING_DAY_SUMMARY"],
+    ["operatingPeriodSummary", "LARK_TABLE_OPERATING_PERIOD_SUMMARY"],
+    ["skuPeriodSummary", "LARK_TABLE_SKU_PERIOD_SUMMARY"],
+    ["profitBreakdown", "LARK_TABLE_PROFIT_BREAKDOWN"],
+    ["skuChangeRequest", "LARK_TABLE_SKU_CHANGE_REQUESTS"],
   ] as const)("%s 使用 %s", (table, envKey) => {
     vi.stubEnv(envKey, `${table}-table-id`);
 
@@ -450,6 +456,12 @@ describe("飞书素材下载", () => {
           tenant_access_token: "tenant-token",
           expire: 7200,
         }), { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      if (url.includes("/drive/v1/files/box-token/download")) {
+        return new Response(JSON.stringify({ code: 999, msg: "not a drive file" }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        });
       }
       return new Response(new Uint8Array([1, 2, 3]), {
         status: 200,
