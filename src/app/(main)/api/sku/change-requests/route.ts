@@ -10,6 +10,7 @@ import {
   buildSkuChangeRequestFields,
   normalizeSkuChangeRequest,
 } from "@/lib/sku-change-request";
+import { normalizeSkuMasterUrlFields } from "@/lib/data-entry-sku";
 import { requireRole, requireSession } from "@/lib/session-server";
 
 export const runtime = "nodejs";
@@ -132,7 +133,7 @@ export async function PUT(request: NextRequest) {
     };
 
     if (action === "approve") {
-      await updateLarkRecord("sku", changeRequest.skuRecordId, changeRequest.patch);
+      await updateLarkRecord("sku", changeRequest.skuRecordId, normalizeSkuMasterUrlFields(changeRequest.patch));
       await updateLarkRecord("skuChangeRequest", requestId, reviewFields);
       return NextResponse.json({ success: true, message: "SKU 修改申请已通过" });
     }

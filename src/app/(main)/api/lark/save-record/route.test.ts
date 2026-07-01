@@ -73,6 +73,29 @@ describe("save-record SKU ownership", () => {
     }]);
   });
 
+  it("normalizes SKU image URL fields before writing to Lark", async () => {
+    vi.stubEnv("LARK_USER_OPEN_IDS", "");
+
+    const response = await POST(request({
+      table: "skuMaster",
+      fields: {
+        SKU: "SKU-1",
+        中文品名: "方向游丝",
+        商品图片: "https://example.com/product.jpg",
+      },
+    }));
+
+    expect(response.status).toBe(200);
+    expect(lark.createLarkRecords).toHaveBeenCalledWith("sku", [{
+      SKU: "SKU-1",
+      中文品名: "方向游丝",
+      商品图片: {
+        text: "https://example.com/product.jpg",
+        link: "https://example.com/product.jpg",
+      },
+    }]);
+  });
+
   it("saves without an owner and warns when the current user has no mapping", async () => {
     vi.stubEnv("LARK_USER_OPEN_IDS", "");
 

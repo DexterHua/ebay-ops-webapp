@@ -11,6 +11,7 @@ import {
   syncStockSummaryFromFlow,
 } from "@/lib/lark-server";
 import { configuredLarkUserReference } from "@/lib/lark-user-map";
+import { normalizeSkuMasterUrlFields } from "@/lib/data-entry-sku";
 import { requireSession } from "@/lib/session-server";
 
 const TABLE_MAP: Record<string, LarkTable> = {
@@ -83,6 +84,7 @@ export async function POST(request: NextRequest) {
     );
     let warning: string | undefined;
     if (table === "skuMaster") {
+      Object.assign(normalizedFields, normalizeSkuMasterUrlFields(normalizedFields));
       delete normalizedFields.负责人;
       let sessionName: string;
       try {

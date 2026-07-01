@@ -148,6 +148,39 @@ describe("PUT /api/sku/change-requests", () => {
     }));
   });
 
+  it("normalizes SKU image URL patches before approving into master data", async () => {
+    lark.listLarkRecords.mockResolvedValue({
+      hasMore: false,
+      records: [{
+        recordId: "rec-request-url",
+        fields: {
+          SKU: "SP-001",
+          SKU记录ID: "rec-sku-1",
+          原始数据JSON: "{\"SKU\":\"SP-001\",\"商品图片\":\"\"}",
+          修改内容JSON: "{\"商品图片\":\"https://example.com/product.jpg\"}",
+          修改字段: "商品图片",
+          提交人: "运营",
+          提交角色: "operator",
+          提交时间: 1782892800000,
+          审核状态: "待审核",
+        },
+      }],
+    });
+
+    const response = await PUT(jsonRequest("PUT", {
+      requestId: "rec-request-url",
+      action: "approve",
+    }));
+
+    expect(response.status).toBe(200);
+    expect(lark.updateLarkRecord).toHaveBeenNthCalledWith(1, "sku", "rec-sku-1", {
+      商品图片: {
+        text: "https://example.com/product.jpg",
+        link: "https://example.com/product.jpg",
+      },
+    });
+  });
+
   it("rejects a pending request without updating SKU master data", async () => {
     const response = await PUT(jsonRequest("PUT", {
       requestId: "rec-request-1",

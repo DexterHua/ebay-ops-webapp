@@ -47,15 +47,30 @@ export const defaultSkuMasterForm: SkuMasterForm = {
   备注: "",
 };
 
+export function normalizeSkuImageUrlField(value: unknown): unknown {
+  if (typeof value !== "string") return value;
+  const url = value.trim();
+  if (!url) return "";
+  return { text: url, link: url };
+}
+
+export function normalizeSkuMasterUrlFields(fields: Record<string, unknown>): Record<string, unknown> {
+  if (!("商品图片" in fields)) return fields;
+  return {
+    ...fields,
+    商品图片: normalizeSkuImageUrlField(fields.商品图片),
+  };
+}
+
 export function buildSkuMasterPayload(form: SkuMasterForm): Record<string, unknown> {
   const businessFields: Record<string, unknown> = { ...form };
   delete businessFields.负责人;
 
-  return {
+  return normalizeSkuMasterUrlFields({
     ...businessFields,
     SKU状态: SKU_MASTER_DEFAULT_STATUS,
     "商品毛重（g）": parseFloat(form["商品毛重（g）"]) || 0,
-  };
+  });
 }
 
 export type SkuMasterImportRow = {

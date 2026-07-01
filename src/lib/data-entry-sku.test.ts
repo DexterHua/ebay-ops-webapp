@@ -20,7 +20,7 @@ describe("data entry SKU master payload", () => {
       中文品名: "方向游丝",
       供应商: "Custom Supplier",
       SKU状态: "待清点",
-      商品图片: "https://example.com/product.jpg",
+      商品图片: { text: "https://example.com/product.jpg", link: "https://example.com/product.jpg" },
       "商品毛重（g）": 320,
     });
     expect(payload).not.toHaveProperty("负责人");
@@ -52,7 +52,7 @@ describe("SKU master import rows", () => {
         风险标签: "低风险",
         "商品毛重（g）": 320,
         "商品尺寸（含包装）（cm）": "13.2*13.2*9.4",
-        商品图片: "https://example.com/1.jpg",
+        商品图片: { text: "https://example.com/1.jpg", link: "https://example.com/1.jpg" },
         描述: "卖点",
         备注: "首批",
       },
